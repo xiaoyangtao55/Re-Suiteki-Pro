@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import com.github.sky130.suiteki.pro.logic.ble.DeviceStatus
 import com.github.sky130.suiteki.pro.logic.ble.InstallStatus
 import com.github.sky130.suiteki.pro.logic.ble.InstallStatus.*
+import com.github.sky130.suiteki.pro.logic.ble.InstallType
 import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager
 import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager.waitForAuth
 import com.github.sky130.suiteki.pro.screen.main.ExternalNavigator
@@ -92,8 +93,19 @@ fun HomeScreen(
         installDialogState.show()
         scope.launch(Dispatchers.IO) {
             val bytes = resultValue.readBytes()
+            // 表盘 .bin → 0x08，小程序 .zab/.zip → 0xA0，写错设备会回 10D656
+            val type = InstallType.detect(resultValue.name, bytes)
             withContext(Dispatchers.Main) {
-                SuitekiManager.bleDevice.value?.install(bytes)
+                val device = SuitekiManager.bleDevice.value
+                when {
+                    device == null ->
+                        SuitekiManager.installStatus.value =
+                            InstallFailure(0, "请先连接设备")
+                    device.status.value != DeviceStatus.Connected ->
+                        SuitekiManager.installStatus.value =
+                            InstallFailure(0, "设备未完成认证，请稍候再试")
+                    else -> device.install(bytes, type)
+                }
             }
         }
     }

@@ -4,6 +4,7 @@ package com.github.sky130.suiteki.pro.device.huami
 
 import com.github.sky130.suiteki.pro.logic.ble.AbstractSuitekiDevice
 import com.github.sky130.suiteki.pro.logic.ble.DeviceStatus
+import com.github.sky130.suiteki.pro.logic.ble.InstallStatus
 import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager
 import com.github.sky130.suiteki.pro.util.BytesUtils
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +19,7 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
     private val appListHelper = HuamiAppListHelper(this)
     private val bleSupport = HuamiBleSupport(this)
     private var installHelper: HuamiInstallHelper? = null
+    private var authCallback: (() -> Unit)? = null
     override val appList get() = appListHelper.list
     val uuids = mapOf(
         HuamiService.UUID_SERVICE_MIBAND_SERVICE to listOf(
@@ -31,12 +33,27 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
         bleSupport.start()
     }
 
-    fun auth() {
+    /**
+     * @param callback 认证成功后的回调。安装过程中遇到 10D203（认证失效）时用它恢复流程，
+     *                 1.5.1 的 ReAuthCallback 就是这个作用。
+     */
+    fun auth(callback: (() -> Unit)? = null) {
+        authCallback = callback
+        status.value = DeviceStatus.Authing
         authService.startAuth()
     }
 
     fun onAuth() {
+        status.value = DeviceStatus.Connected
+        val callback = authCallback
+        authCallback = null
+        callback?.invoke()
         appListHelper.requestAppItems()
+    }
+
+    fun onConnectFailed(reason: String) {
+        status.value = DeviceStatus.Disconnect
+        SuitekiManager.installStatus.value = InstallStatus.InstallFailure(0, reason)
     }
 
     fun handleChannel(data: ByteArray, service: String, characteristics: String) {
@@ -50,12 +67,32 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
         appListHelper.handlePayload(data)
     }
 
+    /** 断线时必须清干净，否则 UI 会一直显示"已连接"，安装器也会挂在旧状态上 */
     open fun onDisconnect() {
-
+        val wasInstalling = installHelper != null ||
+                SuitekiManager.installStatus.value is InstallStatus.Installing
+        status.value = DeviceStatus.Disconnect
+        authCallback = null
+        installHelper?.cancel()
+        installHelper = null
+        if (wasInstalling) {
+            SuitekiManager.installStatus.value =
+                InstallStatus.InstallFailure(0, "连接已断开，请重连后重试")
+        }
     }
 
     override fun install(bytes: ByteArray) {
-        installHelper = HuamiInstallHelper(this, bytes)
+        install(bytes, HuamiService.TYPE_D2_WATCHFACE)
+    }
+
+    override fun install(bytes: ByteArray, type: Byte) {
+        if (status.value != DeviceStatus.Connected) {
+            SuitekiManager.installStatus.value =
+                InstallStatus.InstallFailure(0, "设备未完成认证，请稍候或重新连接")
+            return
+        }
+        installHelper?.cancel()
+        installHelper = HuamiInstallHelper(this, bytes, type, bleSupport.mtu)
         installHelper?.start()
     }
 
@@ -72,17 +109,16 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
     }
 
     fun installFinish() {
+        installHelper?.cancel()
         installHelper = null
     }
 
     fun write(data: ByteArray, service: String, characteristics: String) {
-        SuitekiManager.log("onWrite",service,characteristics,BytesUtils.bytesToHexStr(data).toString())
+        SuitekiManager.log("onWrite", service, characteristics, BytesUtils.bytesToHexStr(data).toString())
         bleSupport.write(data, service, characteristics)
     }
 
     fun write(
         type: Short, data: ByteArray, extendedFlags: Boolean, encrypt: Boolean
     ) = authService.huamiWrite(type, data, extendedFlags, encrypt)
-
-
 }

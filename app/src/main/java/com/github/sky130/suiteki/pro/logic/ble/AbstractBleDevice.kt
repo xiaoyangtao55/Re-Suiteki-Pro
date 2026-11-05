@@ -14,6 +14,12 @@ abstract class AbstractSuitekiDevice(
     abstract val appList: SnapshotStateList<AppInfo>
     abstract fun onStart()
     abstract fun install(bytes: ByteArray)
+
+    /**
+     * 带包类型的安装。只有华米系设备用得到（D2 头里的 type 字节），
+     * 其它设备忽略 type，行为与 [install] 一致。
+     */
+    open fun install(bytes: ByteArray, type: Byte) = install(bytes)
     open fun deleteApp(id: String){}
     open fun launchApp(id:String){}
     open fun requestAppList(){}
