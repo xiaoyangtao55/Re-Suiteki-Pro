@@ -84,6 +84,10 @@ class XiaomiAuthService(val device: XiaomiDevice) {
             return null
         }
 
+        // 到这里会话密钥已经派生完成，step3 及其后的命令都必须是密文。
+        // 原来只在收到 AUTH 回执时才置位，导致 step3 被明文发出，设备直接拒绝。
+        encryptionInitialized = true
+
         val authDeviceInfo: XiaomiProto.AuthDeviceInfo =
             XiaomiProto.AuthDeviceInfo.newBuilder().setUnknown1(0) // TODO ?
                 .setPhoneApiLevel(Build.VERSION.SDK_INT.toFloat()).setPhoneName(Build.MODEL)
