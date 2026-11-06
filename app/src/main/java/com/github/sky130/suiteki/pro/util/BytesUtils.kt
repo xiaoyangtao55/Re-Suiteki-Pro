@@ -15,7 +15,9 @@ object BytesUtils {
     const val APP = 1
     const val FIRMWARE = 2
     fun hexToInt(hex: String): Int {
-        return hex.toInt(16)
+        // 8 位十六进制（如 "F1A2B3C4"）超出 Int.MAX_VALUE，直接 toInt(16) 会抛异常，
+        // 先按 Long 解析再截断，得到和 C 语言 int 强转一致的位模式。
+        return hex.toLong(16).toInt()
     }
 
 

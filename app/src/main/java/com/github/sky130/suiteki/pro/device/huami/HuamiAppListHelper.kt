@@ -60,12 +60,16 @@ class HuamiAppListHelper(val device: HuamiDevice) {
             val item = entry.trim()
             if (item.isEmpty()) continue
             val parts = item.split("-", limit = 2)
-            val id = parts[0].trim().uppercase()
-            if (id.length != ID_LENGTH || id.any { it !in "0123456789ABCDEF" }) {
+            val raw = parts[0].trim().uppercase()
+            // 设备把 id 当十六进制数发，前导零会被吃掉："5D69" 其实是 "00005D69"。
+            // 所以只校验长度上限和字符合法性，然后左补零到 8 位。
+            if (raw.isEmpty() || raw.length > ID_LENGTH ||
+                raw.any { it !in "0123456789ABCDEF" }
+            ) {
                 SuitekiManager.log("app-list-skip", item)
                 continue
             }
-            apps.add(AppInfo(id, parts.getOrElse(1) { "" }.trim()))
+            apps.add(AppInfo(raw.padStart(ID_LENGTH, '0'), parts.getOrElse(1) { "" }.trim()))
         }
         list.clear()
         list.addAll(apps)
