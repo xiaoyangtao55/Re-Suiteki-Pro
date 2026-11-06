@@ -248,7 +248,9 @@ class HuamiAuthService(private val device: HuamiDevice) {
             SuitekiManager.log("auth-failed", reason)
             device.onAuthFailure(reason)
             return
-        } else {
+        } else if (payload[0].toInt() == 0x10) {
+            // 只有 0x10 前缀才是认证命令。0x00a0（应用列表）、0x0026（显示项）之类的
+            // 业务响应也会进到这里，不能因为"不是认证命令"就把状态打成认证失败。
             if (device.status.value == DeviceStatus.Authing) device.status.value =
                 DeviceStatus.AuthFailure
         }

@@ -22,10 +22,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -63,21 +65,23 @@ fun AppScreen(navigator: DestinationsNavigator) {
             if (device == null) {
                 DisconnectScreen()
             } else {
-                val ble by SuitekiManager.bleDevice.collectAsState()
+                // 0x00a0 是明文通道，连上就能拉，不用等认证
+                LaunchedEffect(device) { device?.requestAppList() }
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(device!!.appList) {
-                        ElevatedCard(onClick = {
-
-                        }, modifier = Modifier.fillMaxWidth()) {
+                        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                             Box(
                                 modifier = Modifier
                                     .padding(10.dp)
                                     .fillMaxWidth()
                             ) {
                                 Column {
-                                    Text(it.name)
-                                    Spacer(Modifier.height(5.dp))
                                     Text(it.id)
+                                    Spacer(Modifier.height(5.dp))
+                                    Text(
+                                        if (it.name.isBlank()) "未知版本" else "版本 ${it.name}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
                                 }
 
                                 Row(
@@ -87,12 +91,12 @@ fun AppScreen(navigator: DestinationsNavigator) {
                                 ) {
 
                                     IconButton(
-                                        onClick = { ble?.deleteApp(it.id) },
+                                        onClick = { device?.deleteApp(it.id) },
                                     ) {
                                         Icon(Icons.Default.Delete, null)
                                     }
                                     IconButton(
-                                        onClick = { ble?.launchApp(it.id) },
+                                        onClick = { device?.launchApp(it.id) },
                                     ) {
                                         Icon(Icons.AutoMirrored.Filled.Launch, null)
                                     }
