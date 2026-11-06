@@ -50,7 +50,6 @@ class XiaomiSppSupport(device: XiaomiDevice) : XiaomiAbstractSupport(device), Xi
     private val mChannelHandlers = HashMap<Int, XiaomiChannelHandler>()
 
 
-    private lateinit var writeHandler: Handler
     private val readThread = object : Thread("Read Thread") {
         override fun run() {
             val buffer = ByteArray(1024)
@@ -72,80 +71,93 @@ class XiaomiSppSupport(device: XiaomiDevice) : XiaomiAbstractSupport(device), Xi
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private val writeHandlerThread =
-        object : HandlerThread("Write Handler", THREAD_PRIORITY_BACKGROUND) {
-            override fun onLooperPrepared() {
-                writeHandler = object : Handler(looper) {
-                    override fun handleMessage(msg: Message) {
-                        when (msg.what) {
-                            0 -> {
-                                try {
-                                    socket.connect()
-                                    readThread.start()
-                                    device.auth()
-                                } catch (e: Exception) {
-                                    device.onDisconnect()
-                                    SuitekiManager.log(
-                                        e.message.toString(),
-                                        e.stackTrace.joinToString()
-                                    )
-                                }
-                            }
+    private val writeHandlerThread = HandlerThread("Write Handler", THREAD_PRIORITY_BACKGROUND)
 
-                            1 -> {
-                                val obj = msg.obj as XiaomiSppPacket
-                                try {
-                                    outputStream?.let { stream ->
-                                        obj.encode(device.authService, encryptionCounter).let {
-                                            stream.write(it)
-                                            stream.flush()
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    SuitekiManager.log(
-                                        "outputStreamError",
-                                        e.message.toString(),
-                                        e.stackTrace.joinToString()
-                                    )
-                                    if (::socket.isInitialized) {
-                                        SuitekiManager.log(
-                                            socket.isConnected
-                                        )
-                                    }
-                                }
-                            }
+    /**
+     * 懒加载 + 用 HandlerThread.looper 构造。
+     *
+     * 原来 writeHandler 是 lateinit，在 onLooperPrepared() 里赋值；而 start() 在
+     * writeHandlerThread.start() 之后立刻 obtainMessage(0)，两者是异步的，
+     * 慢一点的机型上会撞上 UninitializedPropertyAccessException（连不上，日志里只有一行崩溃）。
+     * HandlerThread.getLooper() 本身会阻塞到 looper 就绪，所以这里不再有竞态；
+     * 顺带也避免了同一个实例被 start 两次时 IllegalThreadStateException。
+     */
+    private val writeHandler: Handler by lazy {
+        if (!writeHandlerThread.isAlive) {
+            writeHandlerThread.start()
+        }
+        Handler(writeHandlerThread.looper) { msg ->
+            handleWriteMessage(msg)
+            true
+        }
+    }
 
-                            2 -> {
-                                val obj = msg.obj as Pair<XiaomiSppPacket, () -> Unit>
-                                try {
-                                    outputStream?.let { stream ->
-                                        obj.first.encode(device.authService, encryptionCounter)
-                                            .let {
-                                                stream.write(it)
-                                                stream.flush()
-                                            }
-                                    }
-                                } catch (e: Exception) {
-                                    SuitekiManager.log(
-                                        "outputStreamError",
-                                        e.message.toString(),
-                                        e.stackTrace.joinToString()
-                                    )
-                                    if (::socket.isInitialized) {
-                                        SuitekiManager.log(
-                                            socket.isConnected
-                                        )
-                                    }
-                                } finally {
-                                    obj.second()
-                                }
-                            }
+    private fun handleWriteMessage(msg: Message) {
+        when (msg.what) {
+            0 -> {
+                try {
+                    socket.connect()
+                    readThread.start()
+                    device.auth()
+                } catch (e: Exception) {
+                    device.onDisconnect()
+                    SuitekiManager.log(
+                        e.message.toString(),
+                        e.stackTrace.joinToString()
+                    )
+                }
+            }
+
+            1 -> {
+                val obj = msg.obj as XiaomiSppPacket
+                try {
+                    outputStream?.let { stream ->
+                        obj.encode(device.authService, encryptionCounter).let {
+                            stream.write(it)
+                            stream.flush()
                         }
+                    }
+                } catch (e: Exception) {
+                    SuitekiManager.log(
+                        "outputStreamError",
+                        e.message.toString(),
+                        e.stackTrace.joinToString()
+                    )
+                    if (::socket.isInitialized) {
+                        SuitekiManager.log(
+                            socket.isConnected
+                        )
                     }
                 }
             }
+
+            2 -> {
+                val obj = msg.obj as Pair<XiaomiSppPacket, () -> Unit>
+                try {
+                    outputStream?.let { stream ->
+                        obj.first.encode(device.authService, encryptionCounter)
+                            .let {
+                                stream.write(it)
+                                stream.flush()
+                            }
+                    }
+                } catch (e: Exception) {
+                    SuitekiManager.log(
+                        "outputStreamError",
+                        e.message.toString(),
+                        e.stackTrace.joinToString()
+                    )
+                    if (::socket.isInitialized) {
+                        SuitekiManager.log(
+                            socket.isConnected
+                        )
+                    }
+                } finally {
+                    obj.second()
+                }
+            }
         }
+    }
 
     init {
         mChannelHandlers[CHANNEL_PROTO_RX] = this
@@ -282,10 +294,10 @@ class XiaomiSppSupport(device: XiaomiDevice) : XiaomiAbstractSupport(device), Xi
     @SuppressLint("MissingPermission")
     override fun start() {
         SuitekiManager.log("onStartConnect")
-        writeHandlerThread.start()
         adapter.cancelDiscovery()
         dev = adapter.getRemoteDevice(device.mac)
         socket = dev.createInsecureRfcommSocketToServiceRecord(serviceUUID)
+        // 第一次访问 writeHandler 时才会启动 HandlerThread 并等 looper 就绪
         writeHandler.obtainMessage(0).sendToTarget()
     }
 

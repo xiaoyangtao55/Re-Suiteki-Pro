@@ -62,6 +62,9 @@ class XiaomiBleSupport(device: XiaomiDevice) : XiaomiAbstractSupport(device) {
     private var expectedChunks = 0
     private val receivedChunks = HashMap<Int, ByteArray>()
 
+    /** 当前这轮分块是否加密，取自设备的分块开始帧 */
+    private var chunkEncrypted = false
+
     private val uuids = mapOf(
         XiaomiService.UUID_SERVICE to listOf(XiaomiService.UUID_CHARACTERISTIC_COMMAND_READ),
     )
@@ -223,7 +226,9 @@ class XiaomiBleSupport(device: XiaomiDevice) : XiaomiAbstractSupport(device) {
                 expectedChunks = 0
                 receivedChunks.clear()
                 writeRaw(byteArrayOf(0, 0, 1, 0))   // 分块结束 ACK
-                dispatch(joined.toByteArray(), device.isEncrypted)
+                // 用设备在分块开始帧里声明的加密标志，而不是本地状态：
+                // 认证前设备发来的分块是明文，按 isEncrypted 去解会抛异常（然后被吞掉）。
+                dispatch(joined.toByteArray(), chunkEncrypted)
             }
             return
         }
@@ -235,7 +240,7 @@ class XiaomiBleSupport(device: XiaomiDevice) : XiaomiAbstractSupport(device) {
                     SuitekiManager.log("chunk start truncated", data.size)
                     return
                 }
-                buf.get()
+                chunkEncrypted = buf.get().toInt() == 1
                 expectedChunks = buf.short.toInt()
                 receivedChunks.clear()
                 writeRaw(byteArrayOf(0, 0, 1, 1))

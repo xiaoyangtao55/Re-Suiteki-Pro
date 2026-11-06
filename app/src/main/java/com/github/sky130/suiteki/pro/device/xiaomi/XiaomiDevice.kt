@@ -63,6 +63,11 @@ abstract class XiaomiDevice(name: String, mac: String, key: String) : AbstractSu
         appListHelper.delete(id)
     }
 
+    /** 应用管理页的刷新按钮。原来只有连接后自动拉一次，点刷新没有任何反应。 */
+    override fun requestAppList() {
+        appListHelper.requestRpkList()
+    }
+
     override fun onStart() {
         support.start()
     }

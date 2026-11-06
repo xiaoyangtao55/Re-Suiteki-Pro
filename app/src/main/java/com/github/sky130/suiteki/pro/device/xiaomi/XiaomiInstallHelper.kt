@@ -173,7 +173,9 @@ class XiaomiInstallHelper(val device: XiaomiDevice, private val fw: ByteArray) {
         }
 
         buf1.put(0.toByte())
-        buf1.put(helper.subType.toByte())
+        // 这里要的是"文件类型"（表盘 16 / 固件 32 / 小程序 64），不是命令子类型。
+        // 原来写的是 helper.subType（表盘是 4），设备按 4 去解析上传流，校验必然不过。
+        buf1.put(helper.fileType.toByte())
         buf1.put(md5)
         buf1.putInt(fw.size)
         buf1.put(ArrayUtils.subarray(fw, index, fw.size))
