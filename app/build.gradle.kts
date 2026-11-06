@@ -29,6 +29,9 @@ android {
 
     buildTypes {
         release {
+            // 本仓库没有发布用的 keystore，用 debug 证书签一个可安装的 release 包。
+            // 体积比 debug 小很多（资源收缩生效），适合对外发测试版。
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
