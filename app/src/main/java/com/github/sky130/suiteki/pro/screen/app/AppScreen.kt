@@ -145,7 +145,7 @@ fun AppScreen(navigator: DestinationsNavigator) {
                     OutlinedTextField(
                         value = editText,
                         onValueChange = { editText = it },
-                        label = { Text("应用名，留空则恢复显示 id") },
+                        label = { Text("应用名，留空则恢复默认") },
                         singleLine = true,
                     )
                 }

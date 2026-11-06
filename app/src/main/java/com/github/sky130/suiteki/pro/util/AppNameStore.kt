@@ -14,12 +14,24 @@ import com.github.sky130.suiteki.pro.MainApplication.Companion.context
 object AppNameStore {
     private const val PREFS = "suiteki_app_names"
 
+    /**
+     * 内置对照表，数据来自真机安装包的 app.json。
+     * 只是兜底：用户手动命名 / 安装时解析出的名字都优先于它。
+     */
+    private val builtIn = mapOf(
+        "01310AB4" to "恶魔轮盘",
+        "00005E59" to "扫雷",
+        "00005B08" to "存储空间",
+    )
+
     private val prefs by lazy {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     }
 
-    fun get(id: String): String? =
-        prefs.getString(id.uppercase(), null)?.takeIf { it.isNotBlank() }
+    fun get(id: String): String? {
+        val key = id.uppercase()
+        return prefs.getString(key, null)?.takeIf { it.isNotBlank() } ?: builtIn[key]
+    }
 
     fun put(id: String, name: String) {
         val key = id.uppercase()
