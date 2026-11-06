@@ -124,17 +124,28 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
     }
 
     /**
-     * 安装小程序时顺手把包里的 app.json 读出来，记下 id 和名字。
+     * 安装时顺手把包里的 app.json 读出来，记下 id 和名字。
      * 0x00A0 列表只有 id，靠这一步以后才能在应用管理里看到人类可读的名字。
+     *
+     * 已经有名字（内置表或用户手动命名）的不覆盖：表盘包的 appName 经常是
+     * "test"，或者和下载时的标题对不上，人工核对过的更可信。
      */
     private fun rememberAppName(bytes: ByteArray) {
         CoroutineScope(Dispatchers.IO).launch {
             val meta = ZabManifest.parse(bytes) ?: return@launch
-            if (meta.name.isNotBlank()) {
-                AppNameStore.put(meta.id, meta.name)
-                SuitekiManager.log("app-name", "${meta.id}=${meta.name} ${meta.version}")
+            if (!isMeaningfulName(meta.name)) {
+                SuitekiManager.log("app-name-skip", "${meta.id} name=${meta.name}")
+                return@launch
             }
+            if (AppNameStore.get(meta.id) != null) return@launch
+            AppNameStore.put(meta.id, meta.name)
+            SuitekiManager.log("app-name", "${meta.id}=${meta.name} ${meta.version}")
         }
+    }
+
+    private fun isMeaningfulName(name: String): Boolean {
+        val n = name.trim().lowercase()
+        return n.isNotEmpty() && n !in setOf("test", "demo", "untitled", "watchface", "app")
     }
 
     override fun deleteApp(id: String) {
