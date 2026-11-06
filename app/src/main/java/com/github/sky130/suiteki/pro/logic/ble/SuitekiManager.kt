@@ -49,7 +49,7 @@ object SuitekiManager {
      * 直接从后台线程改 SnapshotStateList 会和 Compose 组合期的遍历撞上（并发修改）。
      */
     val logList = mutableStateListOf<String>()
-    private const val MAX_LOG_LINES = 500
+    const val MAX_LOG_LINES = 500
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
     val installStatus = mutableStateOf<InstallStatus>(InstallStatus.Nope)
 
@@ -75,6 +75,15 @@ object SuitekiManager {
         logList.add(line)
         while (logList.size > MAX_LOG_LINES) {
             logList.removeAt(0)
+        }
+    }
+
+    /** 设置页的"清空日志"。和 log() 一样，写快照列表必须在主线程。 */
+    fun clearLog() {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            logList.clear()
+        } else {
+            mainHandler.post { logList.clear() }
         }
     }
 

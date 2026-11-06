@@ -54,13 +54,6 @@ class MainApplication : Application() {
         val debuggable = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
         com.clj.fastble.BleManager.getInstance().enableLog(debuggable).init(this)
         SuitekiManager.init()
-        try {
-            Class.forName("com.github.sky130.suiteki.pro.AppCenter")
-                .getDeclaredMethod("justDoIt")
-                .invoke(null)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
         CrashHandler.instance.init(this)
     }
 }

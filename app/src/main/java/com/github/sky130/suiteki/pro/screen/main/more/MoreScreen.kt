@@ -1,6 +1,9 @@
 package com.github.sky130.suiteki.pro.screen.main.more
 
 import android.annotation.SuppressLint
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -67,6 +70,7 @@ import com.github.sky130.suiteki.pro.MainApplication.Companion.context
 import com.github.sky130.suiteki.pro.MainApplication.Companion.copy
 import com.github.sky130.suiteki.pro.MainApplication.Companion.toast
 import com.github.sky130.suiteki.pro.R
+import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager
 import com.github.sky130.suiteki.pro.logic.database.AppDatabase
 import com.github.sky130.suiteki.pro.logic.database.model.Device
 import com.github.sky130.suiteki.pro.logic.handler.CrashHandler
@@ -108,6 +112,7 @@ fun MoreScreen() {
     val aboutDialogState = rememberDialogState()
     val helpDialogState = rememberDialogState()
     val chatDialogState = rememberDialogState()
+    val settingsDialogState = rememberDialogState()
 
     var hitokotoIndex by remember { mutableIntStateOf(0) }
     var text by remember { mutableStateOf("") }
@@ -122,6 +127,7 @@ fun MoreScreen() {
         AboutDialog(aboutDialogState)
         HelpDialog(helpDialogState)
         ChatDialog(chatDialogState)
+        SettingsDialog(settingsDialogState)
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedCard(
                 onClick = {
@@ -158,7 +164,7 @@ fun MoreScreen() {
 
                 item {
                     AppCard(Modifier, "设置", Icons.Outlined.Settings) {
-                        "未开放".toast()
+                        settingsDialogState.show()
                     }
                 }
 
@@ -172,7 +178,8 @@ fun MoreScreen() {
                     AppCard(Modifier, "更新", Icons.Outlined.Update) {
                         // 原来跳的是第三方短链（akidepot.com/s/xxx），用户没法校验下到的是什么。
                         // 改成版本化的 releases 页，谁发的、什么版本一目了然。
-                        MainApplication.openUrl("https://github.com/xiaoyangtao55/Suiteki-Pro/releases")
+                        // 注意仓库已从 Suiteki-Pro 改名为 Re-Suiteki-Pro，旧地址只会 301。
+                        MainApplication.openUrl("https://github.com/xiaoyangtao55/Re-Suiteki-Pro/releases")
                     }
                 }
 
@@ -208,6 +215,56 @@ fun LogDialog(state: DialogState) {
         }
     })
 }
+
+/** 原来这张卡片点了只弹"未开放"。这里放几个真能用的本地操作，不涉及任何网络。 */
+@Composable
+fun SettingsDialog(state: DialogState) {
+    if (!state.visible.value) return
+    val lines = SuitekiManager.logList.size
+    SuitekiDialog(
+        state = state,
+        title = "设置",
+        icon = Icons.Outlined.Settings,
+        onDismissRequest = { state.dismiss() },
+        button = {
+            OutlinedButton(onClick = { state.dismiss() }) { Text("关闭") }
+        }
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("调试日志", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "当前 $lines 行，上限 ${SuitekiManager.MAX_LOG_LINES} 行",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    "日志里包含设备 MAC 和收发的协议帧，贴到公开场合前请先看一眼。",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = { SuitekiManager.clearLog() }) {
+                    Text("清空日志")
+                }
+                OutlinedButton(onClick = { openAppSettings() }) {
+                    Text("系统设置")
+                }
+            }
+        }
+    }
+}
+
+private fun openAppSettings() {
+    val ctx = MainApplication.context
+    runCatching {
+        ctx.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                .setData(Uri.parse("package:${ctx.packageName}"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+}
+
 
 @Composable
 fun ChatDialog(state: DialogState) {
@@ -325,13 +382,15 @@ fun AboutScreen() {
             Text(text = "by Sky233", style = TextStyle(fontSize = 18.sp))
             Text(text = versionName, style = TextStyle(fontSize = 18.sp))
             Spacer(modifier = Modifier.height(5.dp))
-            Text(text = "Thanks for Gadgetbridget and You", style = TextStyle(fontSize = 15.sp))
+            Text(text = "Thanks to Gadgetbridge and You", style = TextStyle(fontSize = 15.sp))
             Spacer(modifier = Modifier.height(5.dp))
 
             Text(text = "Github",
                 style = TextStyle(fontSize = 15.sp),
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable { MainApplication.openUrl("https://github.com/sky130/Suiteki-Pro") })
+                // 原来指向 sky130/Suiteki-Pro，这个仓库不存在，点了是 404。
+                // 本仓库现在是 Re-Suiteki-Pro（原 Suiteki-Pro 已改名）。
+                modifier = Modifier.clickable { MainApplication.openUrl("https://github.com/xiaoyangtao55/Re-Suiteki-Pro") })
 
         }
     }

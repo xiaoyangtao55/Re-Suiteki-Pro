@@ -16,7 +16,7 @@ android {
         minSdk = 21
         targetSdk = 34
         versionCode = 3
-        versionName = "0.1.2-Dev"
+        versionName = "0.1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -69,6 +69,14 @@ android {
         // this["release"].java.srcDir(protobuf.generatedFilesBaseDir)
         this["debug"].java.srcDir(protobuf.generatedFilesBaseDir)
     }
+
+    testOptions {
+        unitTests {
+            // 协议解析里散落着 android.util.Log，不打开这个开关，JVM 单测会直接抛
+            // "Method w in android.util.Log not mocked"
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
@@ -118,13 +126,13 @@ dependencies {
 
     implementation(libs.permission.flow.compose)
 
-    implementation(libs.microsoft.appcenter.analytics)
-    implementation(libs.microsoft.appcenter.crashes)
-
-
+    // AppCenter 后端 2025-03 已停服，MainApplication 里唯一引用它的是反射一个
+    // 根本不存在的类，每次启动都抛 ClassNotFoundException。依赖一起摘掉，省体积。
 
     implementation(files("lib/Bouncycastle.jar"))
     implementation(kotlin("reflect"))
+
+    testImplementation(libs.junit)
 }
 
 
