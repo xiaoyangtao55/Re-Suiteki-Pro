@@ -256,11 +256,27 @@ class XiaomiSppSupport(device: XiaomiDevice) : XiaomiAbstractSupport(device), Xi
         }
     }
 
+    /**
+     * 原来这里只把 mDisposed 置 true，socket 不关、线程不停，而且全仓库没有调用点。
+     * 结果是切设备后旧 socket 一直占着 RFCOMM 通道，新连接设备只认一条，
+     * 表现为"连上了但不响应"，Read Thread / Write Handler 也会越积越多。
+     */
     fun dispose() {
         if (mDisposed) {
             return
         }
         mDisposed = true
+        // 先关 socket：read() 阻塞在这里，close 才能让它抛 IOException 退出循环
+        if (::socket.isInitialized) {
+            runCatching { socket.close() }
+        }
+        runCatching { readThread.interrupt() }
+        runCatching { writeHandlerThread.quitSafely() }
+        SuitekiManager.log("spp-disposed")
+    }
+
+    override fun terminate() {
+        dispose()
     }
 
     @SuppressLint("MissingPermission")

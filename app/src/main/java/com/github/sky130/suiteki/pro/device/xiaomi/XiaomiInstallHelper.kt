@@ -7,6 +7,7 @@ import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.CMD_WATCHFACE_I
 import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.RPK_COMMAND_TYPE
 import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.SYSTEM_COMMAND_TYPE
 import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.TYPE_FIRMWARE
+import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.TYPE_UNKNOWN
 import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.UPLOAD_COMMAND_TYPE
 import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.WATCHFACE_COMMAND_TYPE
 import com.github.sky130.suiteki.pro.logic.ble.InstallStatus
@@ -32,6 +33,11 @@ class XiaomiInstallHelper(val device: XiaomiDevice, private val fw: ByteArray) {
     fun install() {
         device.scope.launch(Dispatchers.IO) {
             helper.init()
+            // 空文件或格式不认识时，helper.type 还是 -1，发出去只会让设备困惑
+            if (helper.fileType == TYPE_UNKNOWN) {
+                installFailure(0, "无法识别的文件格式，请确认是表盘 / 固件 / 快应用包")
+                return@launch
+            }
             if (helper.fileType == TYPE_FIRMWARE) {
                 support.sendCommand(
                     Command.newBuilder()
@@ -180,31 +186,36 @@ class XiaomiInstallHelper(val device: XiaomiDevice, private val fw: ByteArray) {
         val partSize = chunkSize - 4 // 2 + 2 at beginning of each for total and progress
         val totalParts = ceil((payload.size / partSize.toFloat()).toDouble()).toInt()
 
-        var i = 0
-        while (i * partSize < payload.size) {
-            val currentPart = i + 1
-            val startIndex = i * partSize
-            val endIndex = min((currentPart * partSize).toDouble(), payload.size.toDouble())
-            val chunkToSend = ByteArray((4 + endIndex - startIndex).toInt())
-            writeUint16(chunkToSend, 0, totalParts)
-            writeUint16(chunkToSend, 2, currentPart)
-            System.arraycopy(payload, startIndex, chunkToSend, 4, (endIndex - startIndex).toInt())
+        // 一次只发一片，等这一片写完成再发下一片。
+        // 原来是 while 循环把全部分片一次性塞进 FastBle 的写队列（300KB 表盘约 147 片），
+        // 队列深度不够时要么丢包要么 write busy，而 onWriteFailure 是空的，失败完全不可见。
+        sendPart(payload, partSize, totalParts, 1)
+    }
 
-            support.sendDataChunk(
-                chunkToSend
-            ) {
-                val progress = ((currentPart.toFloat() / totalParts.toFloat()) * 100).toInt()
-                SuitekiManager.log("doUploadProgress", progress)
-
-                if (currentPart >= totalParts) {
-                    installSuccess(100)
-                } else {
-                    updateProgress(progress)
-                }
-            }
-            i++
+    private fun sendPart(payload: ByteArray, partSize: Int, totalParts: Int, currentPart: Int) {
+        if (currentPart > totalParts) {
+            return
         }
+        val startIndex = (currentPart - 1) * partSize
+        if (startIndex >= payload.size) {
+            return
+        }
+        val endIndex = min(currentPart.toDouble() * partSize, payload.size.toDouble()).toInt()
+        val chunkToSend = ByteArray(4 + (endIndex - startIndex))
+        writeUint16(chunkToSend, 0, totalParts)
+        writeUint16(chunkToSend, 2, currentPart)
+        System.arraycopy(payload, startIndex, chunkToSend, 4, endIndex - startIndex)
 
+        support.sendDataChunk(chunkToSend) {
+            val progress = ((currentPart.toFloat() / totalParts.toFloat()) * 100).toInt()
+            SuitekiManager.log("doUploadProgress", progress)
+            if (currentPart >= totalParts) {
+                installSuccess(100)
+            } else {
+                updateProgress(progress)
+                sendPart(payload, partSize, totalParts, currentPart + 1)
+            }
+        }
     }
 
     private fun updateProgress(progress: Int) {

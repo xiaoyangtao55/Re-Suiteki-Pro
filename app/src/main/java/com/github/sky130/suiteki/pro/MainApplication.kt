@@ -49,7 +49,10 @@ class MainApplication : Application() {
         super.onCreate()
         mContext = this
         mApplication = this
-        com.clj.fastble.BleManager.getInstance().enableLog(true).init(this)
+        // release 包里也往 logcat 写 MAC 和收发数据，等于把设备密钥送出去。
+        // 项目没开 buildConfig 生成，所以直接用 FLAG_DEBUGGABLE 判断。
+        val debuggable = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+        com.clj.fastble.BleManager.getInstance().enableLog(debuggable).init(this)
         SuitekiManager.init()
         try {
             Class.forName("com.github.sky130.suiteki.pro.AppCenter")

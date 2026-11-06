@@ -76,12 +76,21 @@ class HuamiAppListHelper(val device: HuamiDevice) {
         SuitekiManager.log("app-list", "count=${apps.size}")
     }
 
+    /**
+     * 这里原来是 launch()，发 0x0023 + 0x07 + appId，想"启动手环上的应用"。
+     *
+     * 核对 Gadgetbridge 后确认这是错的：0x0023 是 ZeppOsWatchfaceService，
+     * 0x07 是 CMD_SET（把某张表盘设为当前表盘），与"启动 app"无关。
+     * Zepp OS 的 23 个服务里没有任何"远程启动应用"的端点，所以这个能力
+     * 在协议层就不存在，真机上必然点了没反应。
+     *
+     * 更糟的是该服务 encrypt=true，Band 7 免认证状态下设备解不开这个包，
+     * 即使想切表盘也只会被静默丢弃。
+     *
+     * 保留函数是为了让 AbstractSuitekiDevice 的接口不变，实际不发任何数据。
+     */
     fun launch(appId: String) {
-        val buffer = ByteBuffer.allocate(5).order(ByteOrder.LITTLE_ENDIAN).apply {
-            put(0x07)
-            putInt(BytesUtils.hexToInt(appId))
-        }
-        device.write(0x0023.toShort(), buffer.array(), extendedFlags = true, encrypt = true)
+        SuitekiManager.log("launch-unsupported", appId)
     }
 
     fun uninstall(appId: String) {

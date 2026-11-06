@@ -23,6 +23,9 @@ abstract class XiaomiAbstractSupport(val device: XiaomiDevice) : BleGattCallback
 
     abstract fun sendDataChunk(data: ByteArray, onSend: () -> Unit = {})
 
+    /** 释放底层连接：BLE 关 GATT，SPP 关 socket 并停读写线程 */
+    abstract fun terminate()
+
     override fun onStartConnect() {}
 
     override fun onConnectFail(bleDevice: BleDevice, exception: BleException) {}

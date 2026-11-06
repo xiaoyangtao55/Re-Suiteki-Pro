@@ -22,6 +22,8 @@ object XiaomiService {
     const val CMD_RPK_DELETE = 3
 
 
+    /** 无法识别格式的文件（空文件、非表盘/固件/rpk），安装前会被挡掉 */
+    const val TYPE_UNKNOWN = 0
     const val TYPE_WATCHFACE = 16
     const val TYPE_FIRMWARE = 32
     const val TYPE_RPK = 64

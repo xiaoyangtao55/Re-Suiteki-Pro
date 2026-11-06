@@ -5,6 +5,7 @@ import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.CMD_RPK_DELETE
 import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.CMD_RPK_LIST
 import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.RPK_COMMAND_TYPE
 import com.github.sky130.suiteki.pro.logic.ble.AppInfo
+import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager
 import com.github.sky130.suiteki.pro.proto.xiaomi.XiaomiProto.Command
 import com.github.sky130.suiteki.pro.proto.xiaomi.XiaomiProto.RpkInfoList
 import com.github.sky130.suiteki.pro.proto.xiaomi.XiaomiProto.RpkList
@@ -26,17 +27,25 @@ class XiaomiAppListHelper(val device: XiaomiDevice) {
     }
 
     fun delete(id: String) {
+        // 列表还没加载完就点删除、或点了已被别处删掉的条目时，shaMap 里可能没有这个 id。
+        // 原来直接 shaMap[id]!! 会 NPE，后面的 removeAt(-1) 也会越界。
+        val sha = shaMap[id]
+        if (sha == null) {
+            SuitekiManager.log("delete-skip", "$id 没有 sha，列表未就绪")
+            return
+        }
         device.support.sendCommand(
             Command.newBuilder().setType(RPK_COMMAND_TYPE).setSubtype(
                 CMD_RPK_DELETE
             ).setRpkMessage(
                 RpkMessage.newBuilder().setRpkDel(
                     RpkInfoList.newBuilder().setId(id)
-                        .setSha(ByteString.copyFrom(shaMap[id]!!.toByteArray())).build()
+                        .setSha(sha).build()
                 ).build()
             ).build()
         )
-        list.removeAt(list.indexOfFirst { it.id == id })
+        val index = list.indexOfFirst { it.id == id }
+        if (index >= 0) list.removeAt(index)
         shaMap.remove(id)
     }
 

@@ -45,6 +45,12 @@ abstract class XiaomiDevice(name: String, mac: String, key: String) : AbstractSu
         status.value = DeviceStatus.Disconnect
     }
 
+    /** 切设备 / 删设备前调用：SPP 要连 socket 和读写线程一起收掉 */
+    override fun disconnect() {
+        support.terminate()
+        onDisconnect()
+    }
+
     open fun onAuth(){
         appListHelper.requestRpkList()
     }

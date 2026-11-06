@@ -55,9 +55,9 @@ class MainActivity : SuitekiActivity() {
                 requestExternalStorage()
             }
             if (state.allGranted) {
-                if (isExternalStorageState) {
-                    DestinationsNavHost(navGraph = NavGraphs.root)
-                }
+                // 全文件访问权限只影响"扫描小米日志"和文件选择器，不该作为启动门槛。
+                // 原来这里用 isExternalStorageState 把整个界面挡住，用户拒绝授权就白屏。
+                DestinationsNavHost(navGraph = NavGraphs.root)
             } else {
                 Box(modifier = Modifier.background(MaterialTheme.colorScheme.background))
                 LaunchedEffect(Unit) {
@@ -71,23 +71,35 @@ class MainActivity : SuitekiActivity() {
 
     private var isExternalStorageState by mutableStateOf(false)
 
+    /** 未授权时只在本次进程里自动跳一次系统设置页，避免每次 onResume 都弹 */
+    private var storagePrompted = false
+
     override fun onResume() {
         super.onResume()
         requestExternalStorage()
     }
 
     private fun requestExternalStorage() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
-                intent.setData(Uri.parse("package:$packageName"))
-                startActivity(intent)
-                isExternalStorageState = false
-            } else {
-                isExternalStorageState = true
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            isExternalStorageState = true
+            return
+        }
+        if (Environment.isExternalStorageManager()) {
+            isExternalStorageState = true
+            return
+        }
+        // 原来这里判断完又无条件置 true，等于门禁形同虚设；现在如实记录状态，
+        // 但不再用它挡界面，只在首次缺失时引导一次。
+        isExternalStorageState = false
+        if (!storagePrompted) {
+            storagePrompted = true
+            runCatching {
+                startActivity(
+                    Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                        .setData(Uri.parse("package:$packageName"))
+                )
             }
         }
-        isExternalStorageState = true
     }
 
     override fun init() {

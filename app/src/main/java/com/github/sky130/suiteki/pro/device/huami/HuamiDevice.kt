@@ -38,6 +38,12 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
         bleSupport.start()
     }
 
+    /** 切设备 / 删设备前调用：先停 GATT，再把状态和安装器清干净 */
+    override fun disconnect() {
+        bleSupport.disconnect()
+        onDisconnect()
+    }
+
     /**
      * @param callback 认证成功后的回调。安装过程中遇到 10D203（认证失效）时用它恢复流程，
      *                 1.5.1 的 ReAuthCallback 就是这个作用。

@@ -23,6 +23,13 @@ abstract class AbstractSuitekiDevice(
     open fun deleteApp(id: String){}
     open fun launchApp(id:String){}
     open fun requestAppList(){}
+
+    /**
+     * 主动断开并释放底层资源（BLE GATT / SPP socket 与读写线程）。
+     * 切换设备、删除设备前必须调用，否则旧连接会一直占着通道：
+     * 表现为"新连接上了但设备不响应"，线程数也会越用越多。
+     */
+    open fun disconnect() {}
 }
 
 data class AppInfo(val id: String,val name: String)

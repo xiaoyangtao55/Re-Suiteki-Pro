@@ -87,13 +87,15 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 val flow = flow {
-    File(CrashHandler.PATH).apply {
-        if (isDirectory) {
-            val list = listFiles() ?: return@apply
-            list.sortedBy { it.nameWithoutExtension }
-            emit(list.last().readText())
-        }
-    }
+    // 目录不存在 / 为空时原来会在 list.last() 抛 NoSuchElementException；
+    // 而且 sortedBy 的返回值被丢掉了，取的其实是"文件名排序最后一个"，不是最新的。
+    val files = File(CrashHandler.PATH)
+        .takeIf { it.isDirectory }
+        ?.listFiles()
+        ?.filter { it.isFile }
+        .orEmpty()
+    val latest = files.maxByOrNull { it.lastModified() }
+    emit(latest?.readText() ?: "暂无崩溃日志")
 }.flowOn(Dispatchers.IO)
 
 @SuppressLint("UnrememberedMutableState")

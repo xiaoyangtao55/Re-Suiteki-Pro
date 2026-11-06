@@ -389,4 +389,8 @@ class XiaomiBleSupport(device: XiaomiDevice) : XiaomiAbstractSupport(device) {
             manager.disconnect(bleDevice)
         }
     }
+
+    override fun terminate() {
+        disconnect()
+    }
 }

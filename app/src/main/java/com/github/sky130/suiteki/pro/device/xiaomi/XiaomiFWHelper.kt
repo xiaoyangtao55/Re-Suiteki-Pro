@@ -23,6 +23,7 @@ import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.RPK_COMMAND_TYP
 import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.SYSTEM_COMMAND_TYPE
 import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.TYPE_FIRMWARE
 import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.TYPE_RPK
+import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.TYPE_UNKNOWN
 import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.TYPE_WATCHFACE
 import com.github.sky130.suiteki.pro.device.xiaomi.XiaomiService.WATCHFACE_COMMAND_TYPE
 import com.github.sky130.suiteki.pro.util.BytesUtils
@@ -67,6 +68,13 @@ class XiaomiFWHelper(var bytes: ByteArray?) {
     }
 
     private fun parseBytes() {
+        val data = bytes
+        // 空文件 / 几字节的垃圾文件以前会在下面 bytes[0] 处直接越界崩溃，
+        // 而且崩在 install() 的协程里会带到主线程。先挡掉。
+        if (data == null || data.size < 4) {
+            fileType = TYPE_UNKNOWN
+            return
+        }
         if (parseAsWatchface()) {
             checkNotNull(id)
             subType = CMD_WATCHFACE_INSTALL

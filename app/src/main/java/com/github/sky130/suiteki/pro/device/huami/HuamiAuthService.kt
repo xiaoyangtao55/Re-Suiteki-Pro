@@ -140,6 +140,11 @@ class HuamiAuthService(private val device: HuamiDevice) {
     }
 
     private fun decode(data: ByteArray) {
+        // 最小帧头是 5 字节。设备异常重连 / 半包 notify 时会推空包或短包，
+        // 原来直接 data[0] 就 ArrayIndexOutOfBounds。
+        if (data.size < 5) {
+            return
+        }
         var i = 0
         if (data[i++].toInt() != 0x03) {
             return
@@ -155,6 +160,10 @@ class HuamiAuthService(private val device: HuamiDevice) {
         }
         val count = data[i++]
         if (firstChunk) { // beginning
+            // 首块还要带 4 字节长度 + 2 字节类型
+            if (data.size < i + 6) {
+                return
+            }
             var full_length =
                 data[i++].toInt() and 0xff or (data[i++].toInt() and 0xff shl 8) or (data[i++].toInt() and 0xff shl 16) or (data[i++].toInt() and 0xff shl 24)
             currentLength = full_length
@@ -170,7 +179,12 @@ class HuamiAuthService(private val device: HuamiDevice) {
             currentType = data[i++].toInt() and 0xff or (data[i++].toInt() and 0xff shl 8)
             currentHandle = handle
         }
-        reassemblyBuffer!!.put(data, i, data.size - i)
+        // 非首块但缓冲还没建立（首块丢了），直接丢弃，不要 NPE
+        val buffer = reassemblyBuffer ?: return
+        val copySize = minOf(data.size - i, buffer.remaining())
+        if (copySize > 0) {
+            buffer.put(data, i, copySize)
+        }
         if (lastChunk) { // end
             var buf = reassemblyBuffer!!.array()
             if (encrypted) {
