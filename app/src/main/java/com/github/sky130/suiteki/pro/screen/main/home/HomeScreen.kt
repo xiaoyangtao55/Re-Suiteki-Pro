@@ -103,7 +103,7 @@ fun HomeScreen(
                             InstallFailure(0, "请先连接设备")
                     device.status.value != DeviceStatus.Connected ->
                         SuitekiManager.installStatus.value =
-                            InstallFailure(0, "设备未完成认证，请稍候再试")
+                            InstallFailure(0, "设备未连接，请稍候再试")
                     else -> device.install(bytes, type)
                 }
             }

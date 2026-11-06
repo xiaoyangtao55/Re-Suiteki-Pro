@@ -29,7 +29,19 @@ data class AppInfo(val id: String,val name: String)
 
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)
-annotation class Suiteki(val pattern: String)
+annotation class Suiteki(
+    /** 稳定标识，会写进数据库。改名等于换设备类型，不要随手改。 */
+    val id: String,
+    /** 型号选择列表里给用户看的名字 */
+    val displayName: String,
+    /** 该型号是否需要用户填授权密钥（Band 7 不需要，小米 8 系需要） */
+    val needsKey: Boolean = false,
+    /**
+     * 蓝牙广播名以这些前缀开头时，在扫描结果里把该型号排到第一并预选。
+     * 仅用于推荐，不参与驱动判定——用户手动改名也不会导致连不上。
+     */
+    val hints: Array<String> = [],
+)
 
 
 enum class DeviceStatus {
