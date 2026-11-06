@@ -9,8 +9,9 @@ object ClassesReader {
 
     fun applicationDexFile(packageCodePath: String): Set<DexFile> {
         val dexFiles: MutableSet<DexFile> = HashSet()
-        val dir = File(packageCodePath).parentFile!!
-        val files = dir.listFiles()!!
+        // 原来两个 !!：packageCodePath 没有父目录、或目录读不了时直接崩在启动流程里
+        val dir = File(packageCodePath).parentFile ?: return dexFiles
+        val files = dir.listFiles() ?: return dexFiles
         for (file in files) {
             try {
                 val absolutePath = file.absolutePath

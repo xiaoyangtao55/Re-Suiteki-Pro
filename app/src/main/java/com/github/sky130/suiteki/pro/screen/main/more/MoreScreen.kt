@@ -170,7 +170,9 @@ fun MoreScreen() {
 
                 item {
                     AppCard(Modifier, "更新", Icons.Outlined.Update) {
-                        MainApplication.openUrl("https://akidepot.com/s/X0Jtx")
+                        // 原来跳的是第三方短链（akidepot.com/s/xxx），用户没法校验下到的是什么。
+                        // 改成版本化的 releases 页，谁发的、什么版本一目了然。
+                        MainApplication.openUrl("https://github.com/xiaoyangtao55/Suiteki-Pro/releases")
                     }
                 }
 

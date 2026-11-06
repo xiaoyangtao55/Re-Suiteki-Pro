@@ -1,9 +1,16 @@
 package com.github.sky130.suiteki.pro.logic.ble
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import com.github.sky130.suiteki.pro.MainApplication.Companion.context
+import com.github.sky130.suiteki.pro.device.huami.miband7.Miband7
+import com.github.sky130.suiteki.pro.device.xiaomi.miband8.MiBand8
+import com.github.sky130.suiteki.pro.device.xiaomi.miband8pro.MiBand8Pro
+import com.github.sky130.suiteki.pro.device.xiaomi.redmiwatch4.RedmiWatch4
+import com.github.sky130.suiteki.pro.device.xiaomi.watchs3.WatchS3
 import com.github.sky130.suiteki.pro.logic.database.model.Device
 import com.github.sky130.suiteki.pro.util.BytesUtils
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,28 +29,50 @@ data class DeviceDriver(
 
 object SuitekiManager {
     private val drivers = LinkedHashMap<String, DeviceDriver>()
+
+    /** dex 扫描失败时的兜底注册表。注解仍然是唯一事实来源，这里只列类。 */
+    private val FALLBACK_DRIVERS = listOf(
+        Miband7::class.java,
+        MiBand8::class.java,
+        MiBand8Pro::class.java,
+        RedmiWatch4::class.java,
+        WatchS3::class.java,
+    )
     private val flow = MutableStateFlow<AbstractSuitekiDevice?>(null)
     val bleDevice: StateFlow<AbstractSuitekiDevice?> get() = flow
     /**
      * 调试日志。用 SnapshotStateList 而不是普通 MutableList，
      * 否则 Compose 里 remember 一次之后新日志不会触发重组，对话框必须关掉重开。
      * 同时留上限：原来是无界列表，连着跑一天会把握手 hex 全堆在内存里。
+     *
+     * 写入一律切回主线程：log() 的调用点散布在 BLE notify 回调、SPP 读线程和协程里，
+     * 直接从后台线程改 SnapshotStateList 会和 Compose 组合期的遍历撞上（并发修改）。
      */
     val logList = mutableStateListOf<String>()
     private const val MAX_LOG_LINES = 500
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
     val installStatus = mutableStateOf<InstallStatus>(InstallStatus.Nope)
 
     /** 连接失败原因。匹配不到驱动时不再静默返回，UI 要能看见。 */
     val connectError = MutableStateFlow<String?>(null)
 
     fun log(vararg str: Any) {
-        logList.add(str.joinToString("\n") {
+        val line = str.joinToString("\n") {
             if (it is ByteArray) {
                 BytesUtils.bytesToHexStr(it).toString()
             } else {
                 it.toString()
             }
-        })
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            appendLog(line)
+        } else {
+            mainHandler.post { appendLog(line) }
+        }
+    }
+
+    private fun appendLog(line: String) {
+        logList.add(line)
         while (logList.size > MAX_LOG_LINES) {
             logList.removeAt(0)
         }
@@ -113,18 +142,33 @@ object SuitekiManager {
 
     fun init() {
         drivers.clear()
-        ClassesReader.reader("com.github.sky130.suiteki.pro", context)
-            .filter { !it.name.contains("$") }.forEach { clazz ->
-                clazz.annotations.filterIsInstance<Suiteki>().forEach { ann ->
-                    drivers[ann.id] = DeviceDriver(
-                        id = ann.id,
-                        displayName = ann.displayName,
-                        needsKey = ann.needsKey,
-                        hints = ann.hints.toList(),
-                        clazz = clazz,
-                    )
-                    Log.d("TAG", "driver: ${ann.id} -> ${clazz.name}")
-                }
+        // dex 扫描失败不该让整个 App 变成"什么型号都选不了"，所以整段包在 runCatching 里
+        val scanned = runCatching {
+            ClassesReader.reader("com.github.sky130.suiteki.pro", context).toList()
+        }.getOrDefault(emptyList())
+        scanned.filter { !it.name.contains("$") }.forEach { clazz ->
+            clazz.annotations.filterIsInstance<Suiteki>().forEach { ann ->
+                register(ann, clazz)
             }
+        }
+        if (drivers.isEmpty()) {
+            // 兜底：某些 ROM / 分包 / R8 配置下 DexFile 扫不到业务类，
+            // 这时显式注册已知的五个驱动，至少保证型号列表不是空的。
+            Log.w("TAG", "dex scan returned nothing, falling back to explicit drivers")
+            FALLBACK_DRIVERS.forEach { clazz ->
+                clazz.getAnnotation(Suiteki::class.java)?.let { register(it, clazz) }
+            }
+        }
+    }
+
+    private fun register(ann: Suiteki, clazz: Class<*>) {
+        drivers[ann.id] = DeviceDriver(
+            id = ann.id,
+            displayName = ann.displayName,
+            needsKey = ann.needsKey,
+            hints = ann.hints.toList(),
+            clazz = clazz,
+        )
+        Log.d("TAG", "driver: ${ann.id} -> ${clazz.name}")
     }
 }

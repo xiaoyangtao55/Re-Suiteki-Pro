@@ -90,6 +90,9 @@ fun HomeScreen(
     val installDialogState = rememberDialogState()
     resultRecipient.onResult { resultValue ->
         Log.d("TAG", "got result ${resultValue.name}")
+        // 重置放在 show() 之前。原来是在对话框的 LaunchedEffect(Unit) 里清，
+        // 文件小的时候安装进度可能先于首次组合写入，随后被清成 Nope，进度条停在 0。
+        SuitekiManager.installStatus.value = InstallStatus.Nope
         installDialogState.show()
         scope.launch(Dispatchers.IO) {
             val bytes = resultValue.readBytes()
@@ -215,9 +218,6 @@ fun DisconnectScreen() {
 @Composable
 fun InstallDialog(state: DialogState, log: DialogState) {
     SuitekiDialog(state = state, title = "安装文件", onDismissRequest = { }) {
-        LaunchedEffect(Unit) {
-            SuitekiManager.installStatus.value = Nope
-        }
         val status by SuitekiManager.installStatus
         Column(
             modifier = Modifier.fillMaxWidth(),

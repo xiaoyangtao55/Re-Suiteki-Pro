@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
@@ -52,6 +53,9 @@ import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
 import com.ramcosta.composedestinations.result.ResultBackNavigator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 @SuppressLint("MutableCollectionMutableState")
@@ -69,21 +73,31 @@ fun FolderScreen(
         mutableStateListOf<File>()
     }
 
+    val scope = rememberCoroutineScope()
 
+    /**
+     * 原来直接在 LaunchedEffect（主线程）里 listFiles()，目录一多就卡 UI；
+     * 而且 listFiles() 在无权限 / 非目录时返回 null，后面的 .filter 会 NPE。
+     */
     fun File.refresh() {
-        fileList.clear()
-        fileList.addAll(listFiles().filter {
-            it.isDirectory || it.extension.lowercase() in listOf(
-                "rpk",
-                "bin",
-                "zip",
-                "face"
-            )
-        }.sortedWith(compareBy<File> { it.isDirectory }.thenBy { it.name }))
+        scope.launch {
+            val entries = withContext(Dispatchers.IO) {
+                (listFiles() ?: emptyArray()).filter {
+                    it.isDirectory || it.extension.lowercase() in listOf(
+                        "rpk",
+                        "bin",
+                        "zip",
+                        "face"
+                    )
+                }.sortedWith(compareBy<File> { it.isDirectory }.thenBy { it.name })
+            }
+            fileList.clear()
+            fileList.addAll(entries)
+        }
     }
 
     LaunchedEffect(Unit) {
-        files.last().refresh()
+        files.lastOrNull()?.refresh()
     }
 
     Scaffold(topBar = {
