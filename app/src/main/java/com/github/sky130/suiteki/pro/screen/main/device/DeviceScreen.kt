@@ -464,15 +464,19 @@ fun DeviceAddDialog(dialogState: DialogState, scanDialogState: DialogState) {
     var key by remember { mutableStateOf("") }
     var driver by remember { mutableStateOf<DeviceDriver?>(null) }
     var menuExpanded by remember { mutableStateOf(false) }
+    // 备注名是否被用户手改过。没改过就跟随型号，改过就不再覆盖
+    var nameEdited by remember { mutableStateOf(false) }
+
+    fun applyDriver(d: DeviceDriver) {
+        driver = d
+        if (!nameEdited) name = d.displayName
+    }
 
     // 扫到设备只做"回填 MAC + 预选型号"，最终仍由用户点确定
     DeviceScanDialog(bleScanState) { scannedMac, bluetoothName ->
         mac = scannedMac
         key = ""
-        SuitekiManager.recommend(bluetoothName)?.let {
-            driver = it
-            if (name.isBlank()) name = it.displayName
-        }
+        SuitekiManager.recommend(bluetoothName)?.let { applyDriver(it) }
     }
 
     SuitekiDialog(
@@ -509,16 +513,6 @@ fun DeviceAddDialog(dialogState: DialogState, scanDialogState: DialogState) {
         title = "添加设备",
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                TextField(
-                    value = mac,
-                    onValueChange = { mac = it.replace("：", ":") },
-                    label = { Text("MAC 地址") },
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = { bleScanState.show() }) { Text("扫描") }
-            }
-
             Box {
                 OutlinedButton(
                     onClick = { menuExpanded = true },
@@ -538,8 +532,7 @@ fun DeviceAddDialog(dialogState: DialogState, scanDialogState: DialogState) {
                         DropdownMenuItem(
                             text = { Text(d.displayName) },
                             onClick = {
-                                driver = d
-                                if (name.isBlank()) name = d.displayName
+                                applyDriver(d)
                                 menuExpanded = false
                             },
                         )
@@ -547,7 +540,24 @@ fun DeviceAddDialog(dialogState: DialogState, scanDialogState: DialogState) {
                 }
             }
 
-            TextField(value = name, onValueChange = { name = it }, label = { Text("备注名") })
+            TextField(
+                value = name,
+                onValueChange = {
+                    name = it
+                    nameEdited = it.isNotBlank()
+                },
+                label = { Text("备注名") },
+            )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextField(
+                    value = mac,
+                    onValueChange = { mac = it.replace("：", ":") },
+                    label = { Text("MAC 地址") },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { bleScanState.show() }) { Text("扫描") }
+            }
 
             if (driver?.needsKey == true) {
                 TextField(
