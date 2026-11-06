@@ -6,8 +6,13 @@ import com.github.sky130.suiteki.pro.logic.ble.AbstractSuitekiDevice
 import com.github.sky130.suiteki.pro.logic.ble.DeviceStatus
 import com.github.sky130.suiteki.pro.logic.ble.InstallStatus
 import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager
+import com.github.sky130.suiteki.pro.util.AppNameStore
 import com.github.sky130.suiteki.pro.util.BytesUtils
+import com.github.sky130.suiteki.pro.util.ZabManifest
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuitekiDevice(
     name, mac, key
@@ -112,9 +117,24 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
                 InstallStatus.InstallFailure(0, "设备未连接，请稍候重试")
             return
         }
+        if (type == HuamiService.TYPE_D2_APP) rememberAppName(bytes)
         installHelper?.cancel()
         installHelper = HuamiInstallHelper(this, bytes, type, bleSupport.mtu)
         installHelper?.start()
+    }
+
+    /**
+     * 安装小程序时顺手把包里的 app.json 读出来，记下 id 和名字。
+     * 0x00A0 列表只有 id，靠这一步以后才能在应用管理里看到人类可读的名字。
+     */
+    private fun rememberAppName(bytes: ByteArray) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val meta = ZabManifest.parse(bytes) ?: return@launch
+            if (meta.name.isNotBlank()) {
+                AppNameStore.put(meta.id, meta.name)
+                SuitekiManager.log("app-name", "${meta.id}=${meta.name} ${meta.version}")
+            }
+        }
     }
 
     override fun deleteApp(id: String) {
