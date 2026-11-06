@@ -2,6 +2,7 @@ package com.github.sky130.suiteki.pro.screen.main.home
 
 import android.util.Log
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -170,7 +172,15 @@ fun HomeScreen(
                     }
                 }
             } else {
-                item { ConnectedCard(device, status, saved) }
+                item {
+                    ConnectedCard(
+                        device = device,
+                        status = status,
+                        saved = saved,
+                        quote = hitokoto[quoteIndex % hitokoto.size],
+                        onQuoteClick = { quoteIndex++ },
+                    )
+                }
                 val others = saved.filterNot { it.mac.equals(device.mac, ignoreCase = true) }
                 if (others.isNotEmpty()) {
                     item { SectionTitle("切换设备") }
@@ -213,19 +223,6 @@ fun HomeScreen(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
-            }
-
-            item {
-                OutlinedCard(
-                    onClick = { quoteIndex++ },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = hitokoto[quoteIndex % hitokoto.size],
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(16.dp)
                     )
                 }
             }
@@ -324,6 +321,8 @@ private fun ConnectedCard(
     device: AbstractSuitekiDevice,
     status: DeviceStatus,
     saved: List<Device>,
+    quote: String,
+    onQuoteClick: () -> Unit,
 ) {
     val model = saved
         .firstOrNull { it.mac.equals(device.mac, ignoreCase = true) }
@@ -369,6 +368,17 @@ private fun ConnectedCard(
                     color = statusColor
                 )
             }
+            HorizontalDivider(modifier = Modifier.padding(top = 6.dp, bottom = 2.dp))
+            // 一言并进设备卡片底部：没连接时不出现，也不占单独一块地方。
+            Text(
+                text = quote,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onQuoteClick() }
+                    .padding(vertical = 4.dp)
+            )
         }
     }
 }
