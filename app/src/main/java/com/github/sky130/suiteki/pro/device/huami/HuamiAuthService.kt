@@ -12,7 +12,9 @@ import java.util.Random
 class HuamiAuthService(private val device: HuamiDevice) {
     private lateinit var publicEC: ByteArray
     private lateinit var sharedEC: ByteArray
-    private var authKey =BytesUtils.getSecretKey(device.key)
+    /** 设备原始密钥，认证全程只读。会话密钥单独放 [authKey]，否则二次认证会拿上一轮的会话密钥去握手。 */
+    private val deviceKey: ByteArray = BytesUtils.getSecretKey(device.key)
+    private var authKey: ByteArray = deviceKey.copyOf()
     private var writeHandle: Byte = 0
     private var privateEC = ByteArray(24)
     private var remotePublicEC = ByteArray(48)
@@ -26,6 +28,14 @@ class HuamiAuthService(private val device: HuamiDevice) {
 
 
     fun startAuth() {
+        // 每次认证都从原始密钥重新算会话密钥。安装途中遇到 10D203 会触发二次认证，
+        // 不复位就会拿上一轮的 finalSharedSessionAES 去握手，设备必然回 10 05 25。
+        authKey = deviceKey.copyOf()
+        encryptedSequenceNr = 0
+        currentHandle = null
+        currentType = 0
+        currentLength = 0
+        reassemblyBuffer = null
         Random().nextBytes(privateEC)
         publicEC = ECDH_B163.ecdh_generate_public(privateEC)
         val sendPubkeyCommand = ByteArray(48 + 4)
@@ -226,6 +236,17 @@ class HuamiAuthService(private val device: HuamiDevice) {
         } else if (payload[0].toInt() == 0x10 && payload[1].toInt() == 0x05 && payload[2].toInt() == 0x01) {
             device.status.value = DeviceStatus.Connected
             device.onAuth()
+            return
+        } else if (payload.size >= 3 && payload[0].toInt() == 0x10 && payload[1].toInt() == 0x05) {
+            // 设备明确回绝了认证，payload[2] 是错误码。0x25 = 密钥校验不通过，
+            // 这是"密钥不对"而不是"设备没响应"，必须让用户看到区别。
+            val code = payload[2].toInt() and 0xff
+            val reason = when (code) {
+                0x25 -> "授权密钥与设备不匹配（0x25），请在设备详情中填写这台手环的专用密钥"
+                else -> "设备拒绝认证，错误码 0x%02X".format(code)
+            }
+            SuitekiManager.log("auth-failed", reason)
+            device.onAuthFailure(reason)
             return
         } else {
             if (device.status.value == DeviceStatus.Authing) device.status.value =

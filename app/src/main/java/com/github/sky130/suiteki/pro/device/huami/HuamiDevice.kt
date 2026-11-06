@@ -56,6 +56,16 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
         SuitekiManager.installStatus.value = InstallStatus.InstallFailure(0, reason)
     }
 
+    /**
+     * 设备明确拒绝了认证（比如 10 05 25 密钥不匹配）。
+     * 必须和"连不上"区分开，否则用户只会看到看门狗超时后的"设备无响应"，永远查不到真正原因。
+     */
+    fun onAuthFailure(reason: String) {
+        status.value = DeviceStatus.AuthFailure
+        authCallback = null
+        SuitekiManager.installStatus.value = InstallStatus.InstallFailure(0, reason)
+    }
+
     fun handleChannel(data: ByteArray, service: String, characteristics: String) {
         authService.handleData(data, service, characteristics)
         if (service == HuamiService.UUID_SERVICE_FIRMWARE && characteristics == HuamiService.UUID_CHARACTERISTIC_FIRMWARE_NOTIFY) {

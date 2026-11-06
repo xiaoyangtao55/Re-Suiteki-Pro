@@ -20,33 +20,32 @@ object BytesUtils {
 
 
 
+    /**
+     * Zepp OS 设备在"未绑定 / 使用通用授权"时共用这一把默认密钥，即 ASCII 的 "0123456789@ABCDE"。
+     * 1.8.x 反编译包的 classes5.dex 里能直接搜到同一常量，说明空密钥时必须回落为它。
+     */
+    private val DEFAULT_SECRET_KEY = byteArrayOf(
+        0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+        0x38, 0x39, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45
+    )
+
     fun getSecretKey(key: String): ByteArray {
-        val authKeyBytes = byteArrayOf(
-            0x30,
-            0x31,
-            0x32,
-            0x33,
-            0x34,
-            0x35,
-            0x36,
-            0x37,
-            0x38,
-            0x39,
-            0x40,
-            0x41,
-            0x42,
-            0x43,
-            0x44,
-            0x45
-        )
-        var authKey = ""
-        authKey = if (!key.startsWith("0x")) "0x$key" else key
-        var srcBytes = authKey.trim { it <= ' ' }.toByteArray()
-        if (authKey.length == 34 && authKey.startsWith("0x")) {
-            srcBytes = hexToBytes(authKey.substring(2))
+        val raw = key.trim()
+        // 空密钥必须原样返回默认值。旧实现会把空串拼成 "0x" 再当裸字节拷进去，
+        // 前两个字节被 0x30('0') / 0x78('x') 覆盖，密钥变成 "0x23456789@ABCDE"，
+        // 只错了 1 个字节，但 AES 下等于全错，设备直接回 10 05 25。
+        if (raw.isEmpty()) return DEFAULT_SECRET_KEY.copyOf()
+
+        val hex = if (raw.startsWith("0x", ignoreCase = true)) raw.substring(2) else raw
+        val isHex32 = hex.length == 32 && hex.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
+        if (!isHex32) {
+            android.util.Log.w(
+                "BytesUtils",
+                "密钥格式非法（需要 32 位十六进制，实际 ${hex.length} 位），已回落默认密钥"
+            )
+            return DEFAULT_SECRET_KEY.copyOf()
         }
-        System.arraycopy(srcBytes, 0, authKeyBytes, 0, srcBytes.size.coerceAtMost(16))
-        return authKeyBytes
+        return hexToBytes(hex)
     }
 
 
