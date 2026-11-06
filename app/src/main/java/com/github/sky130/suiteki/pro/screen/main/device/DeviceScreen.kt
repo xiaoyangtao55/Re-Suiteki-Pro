@@ -60,11 +60,9 @@ import com.github.sky130.suiteki.pro.MainApplication.Companion.context
 import com.github.sky130.suiteki.pro.MainApplication.Companion.toast
 import com.github.sky130.suiteki.pro.logic.ble.DeviceDriver
 import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager
-import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager.waitForAuth
 import com.github.sky130.suiteki.pro.logic.database.AppDatabase
 import com.github.sky130.suiteki.pro.logic.database.model.Device
 import com.github.sky130.suiteki.pro.screen.main.MainGraph
-import com.github.sky130.suiteki.pro.screen.main.more.AppCard
 import com.github.sky130.suiteki.pro.ui.widget.BaseSuitekiDialog
 import com.github.sky130.suiteki.pro.ui.widget.DialogState
 import com.github.sky130.suiteki.pro.ui.widget.SuitekiScaffold
@@ -72,9 +70,7 @@ import com.github.sky130.suiteki.pro.ui.widget.SuitekiDialog
 import com.github.sky130.suiteki.pro.ui.widget.SuitekiTopBar
 import com.github.sky130.suiteki.pro.ui.widget.rememberDialogState
 import com.github.sky130.suiteki.pro.util.TextUtils
-import com.github.sky130.suiteki.pro.util.ZipUtils
 import com.ramcosta.composedestinations.annotation.Destination
-import com.ramcosta.composedestinations.generated.destinations.FolderScreenDestination
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -94,12 +90,19 @@ fun DeviceScreen() {
             Icon(Icons.Filled.Add, null)
         }
     }, topBar = {
-        SuitekiTopBar(title = "设备")
+        SuitekiTopBar(title = "设备管理")
     }) {
         ScanLogDialog(state = scanDialogState)
         DeviceAddDialog(addDialogState, scanDialogState)
         Column {
             val list by AppDatabase.instance.device().getList().collectAsState(initial = listOf())
+            // 连接动作统一放在主页，这里只做增删改，避免两处都能连、状态各自为政
+            Text(
+                "这里是设备的增删改。连接请在主页的「未连接设备」列表里点选。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            )
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(5.dp),
                 modifier = Modifier.padding(horizontal = 10.dp),
@@ -108,11 +111,7 @@ fun DeviceScreen() {
                     val editDialogState = rememberDialogState()
                     DeviceEditDialog(editDialogState, device = it)
                     ElevatedCard(
-                        onClick = {
-                            SuitekiManager.connect(it)
-                            // 匹配不到驱动时不再静默返回，直接把原因告诉用户
-                            SuitekiManager.connectError.value?.toast()
-                        }, modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Box(
                             modifier = Modifier

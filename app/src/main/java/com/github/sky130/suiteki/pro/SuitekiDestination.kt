@@ -1,13 +1,12 @@
 package com.github.sky130.suiteki.pro
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Watch
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 
-val suitekiScreens = listOf(Home, Device, More)
+val suitekiScreens = listOf(Home, Device)
 
 interface SuitekiDestination {
     val icon: ImageVector
@@ -25,11 +24,5 @@ object Device : SuitekiDestination {
     override val icon = Icons.Filled.Watch
     override val label = "设备"
     override val route = "device"
-}
-
-object More : SuitekiDestination {
-    override val icon = Icons.Filled.Apps
-    override val label = "更多"
-    override val route = "more"
 }
 

@@ -73,7 +73,7 @@ fun AppScreen(navigator: DestinationsNavigator) {
                 .padding(horizontal = 10.dp)
         ) {
             if (device == null) {
-                DisconnectScreen()
+                DisconnectScreen { navigator.popBackStack() }
             } else {
                 // 0x00a0 是明文通道，连上就能拉，不用等认证
                 LaunchedEffect(device) { device?.requestAppList() }

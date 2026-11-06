@@ -15,8 +15,8 @@ android {
         applicationId = "com.github.sky130.suiteki.pro"
         minSdk = 21
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.1.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -65,10 +65,10 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
-    sourceSets {
-        // this["release"].java.srcDir(protobuf.generatedFilesBaseDir)
-        this["debug"].java.srcDir(protobuf.generatedFilesBaseDir)
-    }
+    // 不要再把 protobuf.generatedFilesBaseDir 整个目录塞进 debug 的 java srcDir：
+    // 它下面同时有 main/java 和 debug/java，而 protobuf 插件已经把当前变体那一个
+    // 加进 classpath 了，再加父目录就是同一个 XiaomiProto 出现两次，
+    // javac 直接报 duplicate class（增量构建命中缓存时才会躲过去）。
 
     testOptions {
         unitTests {
@@ -122,7 +122,6 @@ dependencies {
     implementation(libs.compose.destinations.core)
     ksp(libs.compose.destinations.ksp)
 
-    implementation(libs.circularprogressbar.compose)
 
     implementation(libs.permission.flow.compose)
 

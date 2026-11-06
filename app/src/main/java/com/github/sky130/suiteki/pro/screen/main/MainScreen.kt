@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.Icon
@@ -41,7 +40,6 @@ import com.ramcosta.composedestinations.generated.NavGraphs
 import com.ramcosta.composedestinations.generated.destinations.DeviceScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.FolderScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.HomeScreenDestination
-import com.ramcosta.composedestinations.generated.destinations.MoreScreenDestination
 import com.ramcosta.composedestinations.generated.navgraphs.MainNavGraph
 import com.ramcosta.composedestinations.manualcomposablecalls.composable
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
@@ -136,7 +134,6 @@ enum class MainItem(
 
     Device(DeviceScreenDestination, "设备", Icons.Default.Watch),
 
-    More(MoreScreenDestination, "更多", Icons.Default.Apps),
 }
 
 @NavHostGraph(route = "main")
