@@ -19,19 +19,6 @@ import java.nio.ByteOrder
  */
 class HuamiAppListHelper(val device: HuamiDevice) {
 
-    companion object {
-        const val CMD_APPS: Byte = 0x02
-        const val CMD_INCOMING: Byte = 0x00
-        const val CMD_OUTGOING: Byte = 0x01
-
-        const val CMD_APPS_LIST: Byte = 0x01
-        const val CMD_APPS_DELETE: Byte = 0x03
-
-        private const val REQUEST_SIZE = 16
-        private const val LIST_HEADER_SIZE = 16
-        private const val ID_LENGTH = 8
-    }
-
     val list = mutableStateListOf<AppInfo>()
 
     fun handlePayload(payload: ByteArray) {
@@ -45,35 +32,62 @@ class HuamiAppListHelper(val device: HuamiDevice) {
     /**
      * 列表是纯 ASCII，没有长度前缀也没有结束符，末尾可能跟 0。
      * 形如 "0A1B2C3D-1.0.0;0A1B2C3E-2.1.3;"
+     *
+     * 抽成 companion 里的纯函数，一是方便单测（不碰 Compose 快照列表），
+     * 二是把"哪些条目被丢掉"作为返回值交给调用方决定怎么记日志。
      */
     private fun parseAppList(payload: ByteArray) {
-        if (payload.size <= LIST_HEADER_SIZE) {
-            list.clear()
-            return
-        }
-        val text = String(
-            payload, LIST_HEADER_SIZE, payload.size - LIST_HEADER_SIZE, Charsets.UTF_8
-        ).trim { it <= ' ' || it == '\u0000' }
-
-        val apps = ArrayList<AppInfo>()
-        for (entry in text.split(";")) {
-            val item = entry.trim()
-            if (item.isEmpty()) continue
-            val parts = item.split("-", limit = 2)
-            val raw = parts[0].trim().uppercase()
-            // 设备把 id 当十六进制数发，前导零会被吃掉："5D69" 其实是 "00005D69"。
-            // 所以只校验长度上限和字符合法性，然后左补零到 8 位。
-            if (raw.isEmpty() || raw.length > ID_LENGTH ||
-                raw.any { it !in "0123456789ABCDEF" }
-            ) {
-                SuitekiManager.log("app-list-skip", item)
-                continue
-            }
-            apps.add(AppInfo(raw.padStart(ID_LENGTH, '0'), parts.getOrElse(1) { "" }.trim()))
-        }
+        val (apps, skipped) = parseListPayload(payload)
         list.clear()
         list.addAll(apps)
+        if (skipped.isNotEmpty()) {
+            skipped.forEach { SuitekiManager.log("app-list-skip", it) }
+        }
         SuitekiManager.log("app-list", "count=${apps.size}")
+    }
+
+    companion object {
+        const val CMD_APPS: Byte = 0x02
+        const val CMD_INCOMING: Byte = 0x00
+        const val CMD_OUTGOING: Byte = 0x01
+
+        const val CMD_APPS_LIST: Byte = 0x01
+        const val CMD_APPS_DELETE: Byte = 0x03
+
+        private const val REQUEST_SIZE = 16
+        private const val LIST_HEADER_SIZE = 16
+        private const val ID_LENGTH = 8
+
+        /**
+         * @return 解析出的应用列表，以及被跳过的原始条目（供日志排查）
+         */
+        fun parseListPayload(payload: ByteArray): Pair<List<AppInfo>, List<String>> {
+            if (payload.size <= LIST_HEADER_SIZE) {
+                return emptyList<AppInfo>() to emptyList()
+            }
+            val text = String(
+                payload, LIST_HEADER_SIZE, payload.size - LIST_HEADER_SIZE, Charsets.UTF_8
+            ).trim { it <= ' ' || it == '\u0000' }
+
+            val apps = ArrayList<AppInfo>()
+            val skipped = ArrayList<String>()
+            for (entry in text.split(";")) {
+                val item = entry.trim()
+                if (item.isEmpty()) continue
+                val parts = item.split("-", limit = 2)
+                val raw = parts[0].trim().uppercase()
+                // 设备把 id 当十六进制数发，前导零会被吃掉："5D69" 其实是 "00005D69"。
+                // 所以只校验长度上限和字符合法性，然后左补零到 8 位。
+                if (raw.isEmpty() || raw.length > ID_LENGTH ||
+                    raw.any { it !in "0123456789ABCDEF" }
+                ) {
+                    skipped.add(item)
+                    continue
+                }
+                apps.add(AppInfo(raw.padStart(ID_LENGTH, '0'), parts.getOrElse(1) { "" }.trim()))
+            }
+            return apps to skipped
+        }
     }
 
     /**

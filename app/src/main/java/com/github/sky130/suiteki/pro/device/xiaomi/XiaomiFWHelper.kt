@@ -30,7 +30,8 @@ import com.github.sky130.suiteki.pro.util.BytesUtils
 import com.github.sky130.suiteki.pro.util.StringUtils.untilNullTerminator
 import com.github.sky130.suiteki.pro.util.hashBytes
 import com.github.sky130.suiteki.pro.util.toHex
-import org.json.JSONObject
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import java.io.ByteArrayInputStream
 import java.util.zip.ZipInputStream
 
@@ -152,18 +153,19 @@ class XiaomiFWHelper(var bytes: ByteArray?) {
             }
         }.getOrNull() ?: return false
 
-        return runCatching {
-            JSONObject(manifest).apply {
-                packageName = getString("package").isEmptyThrow()
-                name = getString("name").isEmptyThrow()
-                versionName = getString("versionName").isEmptyThrow()
-                versionCode = getInt("versionCode")
-                id = packageName
-            }
-        }.isSuccess
+        // 用 Gson 而不是 android 内置的 org.json：org.json 在 JVM 单测里是空壳桩，
+        // 解析永远失败，这条分支就永远测不到。Gson 是普通 Java 库，本地测试能跑真实现。
+        val obj = runCatching { JsonParser.parseString(manifest).asJsonObject }.getOrNull()
+            ?: return false
+        val pkg = obj.stringOrNull("package") ?: return false
+        packageName = pkg
+        name = obj.stringOrNull("name") ?: pkg
+        versionName = obj.stringOrNull("versionName") ?: ""
+        versionCode = obj.get("versionCode")?.takeIf { it.isJsonPrimitive }?.asInt ?: 0
+        id = pkg
+        return true
     }
 
-    private fun String.isEmptyThrow(e: Exception = Exception()) = apply {
-        ifEmpty { throw e }
-    }
+    private fun JsonObject.stringOrNull(key: String): String? =
+        get(key)?.takeIf { it.isJsonPrimitive }?.asString?.takeIf { it.isNotBlank() }
 }
