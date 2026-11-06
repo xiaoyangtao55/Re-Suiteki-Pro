@@ -1,6 +1,7 @@
 package com.github.sky130.suiteki.pro.screen.main.device
 
 import android.os.Environment
+import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,6 +68,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.zip.ZipFile
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -141,32 +143,54 @@ fun ScanLogDialog(state: DialogState) {
         TextButton(onClick = {
             "开始扫描".toast()
             scope.launch(Dispatchers.IO) {
-                File(
+                val texts = mutableListOf<String>()
+
+                // 1) 直读小米运动健康 / 小米运动的日志。
+                //    1.8.x 从来没让用户"填"过密钥，key 是它自己从 Wearable.log 里捞出来的；
+                //    Pro 少了这一步，空 key 只能落到默认值，设备必然回 10 05 25。
+                val directLogs = listOf(
+                    "Android/data/com.xiaomi.wearable/files/log/Wearable.log",
+                    "Android/data/com.mi.health/files/log/XiaomiFit.device.log"
+                )
+                for (path in directLogs) {
+                    val f = File(Environment.getExternalStorageDirectory(), path)
+                    if (!f.isFile) continue
+                    runCatching { texts += f.readText() }
+                        .onFailure { Log.w("ScanLog", "读取 ${f.absolutePath} 失败", it) }
+                }
+
+                // 2) 兜底：Download/wearablelog 下的日志包。不再写死内部文件名——
+                //    新版小米运动健康导出的是 Wearable.log，旧版才叫 XiaomiFit.device.log。
+                val dir = File(
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
                     "wearablelog"
-                ).let {
-                    var time = 0L
-                    it.listFiles { _, name ->
-                        name.endsWith("log.zip")
-                    }?.forEach { file ->
-                        if (!file.isFile) return@forEach
-                        file.nameWithoutExtension.replace("log", "").toLong().let { let ->
-                            if (time < let) {
-                                time = let
-                            }
+                )
+                val zips = (dir.listFiles { _, name -> name.endsWith("log.zip", true) } ?: emptyArray())
+                    .sortedByDescending {
+                        it.nameWithoutExtension.replace("log", "").toLongOrNull() ?: 0L
+                    }
+                for (zip in zips.take(3)) {
+                    runCatching {
+                        ZipFile(zip).use { zf ->
+                            zf.entries().asSequence()
+                                .filter { !it.isDirectory && it.name.endsWith(".log", true) }
+                                .forEach { e ->
+                                    zf.getInputStream(e).bufferedReader()
+                                        .use { r -> texts += r.readText() }
+                                }
                         }
+                    }.onFailure { Log.w("ScanLog", "解包 ${zip.name} 失败", it) }
+                }
+
+                if (texts.isEmpty()) {
+                    return@launch withContext(Dispatchers.Main) {
+                        "没找到日志：请按上面的步骤在小米运动健康里开启日志上传，或到系统设置里授予“所有文件访问”权限".toast()
                     }
-                    if (time == 0L) {
-                        return@launch withContext(Dispatchers.Main) { "加载失败，日志压缩包不存在".toast() }
-                    }
-                    val latestLogFile = File(it, "${time}log.zip")
-                    latestLogFile?.let {
-                        val text = ZipUtils.extractFrom(
-                            it, "XiaomiFit.device.log"
-                        )
-                            ?: return@launch withContext(Dispatchers.Main) { "加载失败，日志文件不存在".toast() }
-                        val deviceList = arrayListOf<Device>()
-                        for (i in text.split("\n")) {
+                }
+
+                val deviceList = arrayListOf<Device>()
+                for (text in texts) {
+                    for (i in text.split("\n")) {
                             val mac = TextUtils.getRegexMatchText(i, "mac=", ", ")
                             if (mac.isEmpty() || mac.length < 15) continue
                             val authKey = TextUtils.getRegexMatchText(i, "authKey=", ", ")
@@ -250,11 +274,36 @@ fun ScanLogDialog(state: DialogState) {
 
                             }
                         }
-                        AppDatabase.instance.device().insert(deviceList)
+                }
+
+                // 同 mac 只更新密钥，不再插一条重复记录；用户加过的设备直接就能用新 key
+                val existing = AppDatabase.instance.device().getAll()
+                val toInsert = arrayListOf<Device>()
+                var updated = 0
+                for (d in deviceList) {
+                    val hit = existing.firstOrNull { it.mac.equals(d.mac, ignoreCase = true) }
+                    if (hit == null) {
+                        if (toInsert.none { it.mac.equals(d.mac, ignoreCase = true) }) toInsert += d
+                    } else if (d.key.isNotBlank() && hit.key != d.key) {
+                        AppDatabase.instance.device().updateKey(hit.mac, d.key)
+                        updated++
                     }
                 }
+                if (toInsert.isNotEmpty()) AppDatabase.instance.device().insert(toInsert)
+
+                val withKey = deviceList.count { it.key.isNotBlank() }
                 withContext(Dispatchers.Main) {
-                    "扫描完成".toast()
+                    when {
+                        deviceList.isEmpty() ->
+                            "日志里没有设备记录，请确认小米运动健康里绑定过这台手环".toast()
+                        withKey == 0 ->
+                            "找到 ${deviceList.size} 台设备，但日志里没有 authKey，无法用于华米认证".toast()
+                        else -> buildString {
+                            append("扫描完成：${deviceList.size} 台，带密钥 $withKey 台")
+                            if (toInsert.isNotEmpty()) append("，新增 ${toInsert.size} 台")
+                            if (updated > 0) append("，更新密钥 $updated 台")
+                        }.toast()
+                    }
                 }
             }
         }) {

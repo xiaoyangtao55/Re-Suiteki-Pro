@@ -23,6 +23,13 @@ interface DeviceDAO {
     @Query("select * from suiteki_device ORDER BY `index`")
     fun getList(): Flow<List<Device>>
 
+    @Query("select * from suiteki_device")
+    suspend fun getAll(): List<Device>
+
+    /** 扫日志扫到新密钥时，更新已有设备的 key，避免用户还得手动删了重加 */
+    @Query("update suiteki_device set `key` = :key where mac = :mac")
+    suspend fun updateKey(mac: String, key: String)
+
     @Query("delete from suiteki_device")
     suspend fun deleteAll()
 }
