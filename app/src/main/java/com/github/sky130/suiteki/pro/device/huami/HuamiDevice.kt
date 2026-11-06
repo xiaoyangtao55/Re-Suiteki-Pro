@@ -51,6 +51,17 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
         appListHelper.requestAppItems()
     }
 
+    /**
+     * BLE 链路就绪即可用。
+     *
+     * Band 7 的固件/表盘通道 0x1530/1531/1532 是老的文件传输服务（手环 3 时代就有），
+     * 固件不校验 authKey，1.8.x 全程不做 0x0082 握手也能正常装表盘。所以这里不再等认证，
+     * 连上就算 Connected；同时也不主动拉 appList（那条走 0x0082，未认证只会白等超时）。
+     */
+    fun onChannelReady() {
+        status.value = DeviceStatus.Connected
+    }
+
     fun onConnectFailed(reason: String) {
         status.value = DeviceStatus.Disconnect
         SuitekiManager.installStatus.value = InstallStatus.InstallFailure(0, reason)
@@ -98,7 +109,7 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
     override fun install(bytes: ByteArray, type: Byte) {
         if (status.value != DeviceStatus.Connected) {
             SuitekiManager.installStatus.value =
-                InstallStatus.InstallFailure(0, "设备未完成认证，请稍候或重新连接")
+                InstallStatus.InstallFailure(0, "设备未连接，请稍候重试")
             return
         }
         installHelper?.cancel()

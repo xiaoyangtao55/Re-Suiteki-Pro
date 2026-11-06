@@ -75,8 +75,10 @@ class HuamiBleSupport(private val device: HuamiDevice) : BleGattCallback() {
                 }
             }
 
-            // 3. 认证
-            device.auth()
+            // 3. Band 7 的固件/表盘通道（0x1530/1531/1532）不校验 authKey。
+            //    1.8.x 连接后直接发 D0，全包没有 0x0082 握手，也没有密钥输入框。
+            //    这里若继续强制认证，设备回 10 05 25 会把状态打成 AuthFailure，安装入口直接被挡死。
+            device.onChannelReady()
         }
     }
 
