@@ -2,6 +2,8 @@
 
 给小米手环 / 红米手表装表盘和小程序，不登录 Zepp、不需要云端。
 
+应用名 **Re:Suiteki Pro**，包名 `com.re.suiteki.pro`，可以和原版 Suiteki 同时安装。
+
 基于 [sky130/Suiteki](https://github.com/sky130/Suiteki) 重做设备层，小米私有协议的实现参考
 [Gadgetbridge](https://codeberg.org/Freeyourgadget/Gadgetbridge)。
 

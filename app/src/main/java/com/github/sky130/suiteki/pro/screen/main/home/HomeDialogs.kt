@@ -75,7 +75,7 @@ fun AboutDialog(state: DialogState, logState: DialogState) {
                 Spacer(modifier = Modifier.width(14.dp))
                 Column {
                     Text(
-                        text = "Suiteki Pro",
+                        text = "Re:Suiteki Pro",
                         style = TextStyle(fontSize = 22.sp),
                         color = MaterialTheme.colorScheme.primary
                     )

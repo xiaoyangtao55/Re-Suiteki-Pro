@@ -352,7 +352,7 @@ fun ScanLogDialog(state: DialogState) {
             3.点击右下角的[我的],滑动到底部点击[关于]
             4.连续点击那个[橙色圆圈](小米应用图标)
             5.提示对话框出来时,请点击确认
-            6.对话框消失后,进入Suiteki Pro
+            6.对话框消失后,进入Re:Suiteki Pro
             7.点击下面的[扫描]按钮
         """.trimIndent()
         }
