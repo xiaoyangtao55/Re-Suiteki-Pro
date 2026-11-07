@@ -19,6 +19,8 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -64,30 +66,40 @@ fun MainScreen(
     Scaffold(bottomBar = {
         BottomBar(navController = navController)
     }) { innerPadding ->
-        DestinationsNavHost(
-            navGraph = NavGraphs.main,
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize(),
-            navController = navController,
-            defaultTransitions = BasicTransitions(enterTransition = {
-                fadeIn(animationSpec = tween(400), initialAlpha = 0f)
-            },
-                exitTransition = {
-                    fadeOut(animationSpec = tween(400), targetAlpha = 0f)
-                }),
-            dependenciesContainerBuilder = {
-                dependency(createExternalNavigator(navigator))
-            }
-        ) {
-            composable(HomeScreenDestination) {
-                HomeScreen(
-                    createExternalNavigator(navigator),
-                    resultRecipient = resultRecipient
-                )
+        // 主页需要跳到同一层图里的「设备」页。它拿到的 ExternalNavigator 是外层
+        // （RootGraph）的控制器，拿去 navigate(MainGraph 里的路由) 会直接抛
+        // "destination cannot be found"——之前点「添加设备」闪退就是这个。
+        CompositionLocalProvider(LocalMainNavController provides navController) {
+            DestinationsNavHost(
+                navGraph = NavGraphs.main,
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize(),
+                navController = navController,
+                defaultTransitions = BasicTransitions(enterTransition = {
+                    fadeIn(animationSpec = tween(400), initialAlpha = 0f)
+                },
+                    exitTransition = {
+                        fadeOut(animationSpec = tween(400), targetAlpha = 0f)
+                    }),
+                dependenciesContainerBuilder = {
+                    dependency(createExternalNavigator(navigator))
+                }
+            ) {
+                composable(HomeScreenDestination) {
+                    HomeScreen(
+                        createExternalNavigator(navigator),
+                        resultRecipient = resultRecipient
+                    )
+                }
             }
         }
     }
+}
+
+/** 底部页签所在的 NavController（MainGraph 那层）。 */
+val LocalMainNavController = staticCompositionLocalOf<NavHostController> {
+    error("LocalMainNavController 未提供")
 }
 
 class BasicTransitions(

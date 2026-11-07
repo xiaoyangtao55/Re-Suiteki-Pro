@@ -59,6 +59,7 @@ import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager
 import com.github.sky130.suiteki.pro.logic.database.AppDatabase
 import com.github.sky130.suiteki.pro.logic.database.model.Device
 import com.github.sky130.suiteki.pro.screen.main.ExternalNavigator
+import com.github.sky130.suiteki.pro.screen.main.LocalMainNavController
 import com.github.sky130.suiteki.pro.screen.main.MainGraph
 import com.github.sky130.suiteki.pro.ui.widget.AppCard
 import com.github.sky130.suiteki.pro.ui.widget.DialogState
@@ -72,6 +73,7 @@ import com.ramcosta.composedestinations.generated.destinations.AppScreenDestinat
 import com.ramcosta.composedestinations.generated.destinations.DeviceScreenDestination
 import com.ramcosta.composedestinations.generated.destinations.FolderScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
+import com.ramcosta.composedestinations.navigation.navigate
 import com.ramcosta.composedestinations.result.ResultRecipient
 import com.ramcosta.composedestinations.result.onResult
 import kotlinx.coroutines.Dispatchers
@@ -129,6 +131,9 @@ fun HomeScreen(
     LogDialog(logDialogState)
     InstallDialog(state = installDialogState, log = logDialogState)
 
+    // 同层页签要走 MainGraph 的控制器，外部那个只在跳 RootGraph 页面时用
+    val mainNav = LocalMainNavController.current
+
     val current by SuitekiManager.bleDevice.collectAsState(null)
     // 连接状态在这里订阅一次，卡片和下面的功能入口共用；直接读 status.value
     // 不会触发重组，连上以后"暂不可用"那行会一直挂着。
@@ -172,7 +177,7 @@ fun HomeScreen(
                 if (saved.isEmpty()) {
                     item {
                         EmptyDeviceCard {
-                            navigator.navigator.navigate(DeviceScreenDestination) {
+                            mainNav.navigate(DeviceScreenDestination) {
                                 launchSingleTop = true
                             }
                         }
