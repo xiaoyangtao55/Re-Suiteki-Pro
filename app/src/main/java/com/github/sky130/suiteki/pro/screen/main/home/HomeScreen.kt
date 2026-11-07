@@ -62,6 +62,7 @@ import com.github.sky130.suiteki.pro.screen.main.ExternalNavigator
 import com.github.sky130.suiteki.pro.screen.main.LocalMainNavController
 import com.github.sky130.suiteki.pro.screen.main.MainGraph
 import com.github.sky130.suiteki.pro.ui.widget.AppCard
+import com.github.sky130.suiteki.pro.util.QuoteStore
 import com.github.sky130.suiteki.pro.ui.widget.DialogState
 import com.github.sky130.suiteki.pro.ui.widget.SuitekiDialog
 import com.github.sky130.suiteki.pro.ui.widget.SuitekiScaffold
@@ -99,7 +100,8 @@ fun HomeScreen(
     val logDialogState = rememberDialogState()
     val aboutDialogState = rememberDialogState()
     val helpDialogState = rememberDialogState()
-    var quoteIndex by remember { mutableIntStateOf(0) }
+    // 每次进主页取下一句，位置存在本地，不然离开页面就丢，永远从第一句开始
+    var quoteIndex by remember { mutableIntStateOf(QuoteStore.next(hitokoto.size)) }
 
     resultRecipient.onResult { resultValue ->
         Log.d("TAG", "got result ${resultValue.name}")
@@ -160,7 +162,7 @@ fun HomeScreen(
         ) {
             item {
                 OutlinedCard(
-                    onClick = { quoteIndex++ },
+                    onClick = { quoteIndex = QuoteStore.next(hitokoto.size) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
