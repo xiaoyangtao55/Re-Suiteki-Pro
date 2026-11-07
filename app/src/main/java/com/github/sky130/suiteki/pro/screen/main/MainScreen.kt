@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.github.sky130.suiteki.pro.screen.main.home.HomeScreen
 import com.github.sky130.suiteki.pro.ui.theme.SuitekiTheme
@@ -52,8 +53,6 @@ import com.ramcosta.composedestinations.navigation.popUpTo
 import com.ramcosta.composedestinations.result.ResultRecipient
 import com.ramcosta.composedestinations.scope.resultRecipient
 import com.ramcosta.composedestinations.spec.DirectionDestinationSpec
-import com.ramcosta.composedestinations.utils.isRouteOnBackStack
-import com.ramcosta.composedestinations.utils.isRouteOnBackStackAsState
 import java.io.File
 
 @Composable
@@ -111,17 +110,25 @@ class BasicTransitions(
 fun BottomBar(
     navController: NavHostController
 ) {
+    // 用"当前页"而不是"是否在回退栈里"判断选中。主页是起始页，从主页跳到设备页后
+    // 它仍然躺在回退栈里，isRouteOnBackStack 会一直返回 true，导致点「主页」直接 return，
+    // 人就被卡在设备页出不来了。
+    val currentEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentEntry?.destination?.route
+
     NavigationBar {
         MainItem.entries.forEach { destination ->
-            val isCurrentDestOnBackStack by navController.isRouteOnBackStackAsState(destination.direction)
+            val isCurrent = currentRoute == destination.direction.route
             NavigationBarItem(
-                selected = isCurrentDestOnBackStack,
+                selected = isCurrent,
                 onClick = {
-                    if (isCurrentDestOnBackStack) {
+                    if (isCurrent) {
                         return@NavigationBarItem
                     }
                     navController.navigate(destination.direction) {
-                        popUpTo(NavGraphs.main) {
+                        // 回到起始页（主页），把上面压的页全部弹掉；
+                        // 各页状态存下来，切回来时还原
+                        popUpTo(HomeScreenDestination) {
                             saveState = true
                         }
                         launchSingleTop = true
