@@ -10,19 +10,46 @@ Re:Suiteki Pro 以 GNU AGPL-3.0 发布（见 [LICENSE](LICENSE)）。
 
 | 项 | 内容 |
 |---|---|
-| 文件 | `app/lib/Bouncycastle.jar`（裁剪子集，47 个类，约 49 KB） |
+| 文件 | `app/lib/Bouncycastle.jar`（裁剪子集，32 个源文件 / 35 个 class，49,302 字节） |
+| 上游 | Bouncy Castle `bcprov-jdk18on` **1.76**（2023-09-19 发布） |
 | 包名 | `org.bouncycastle.shaded.*` |
 | 版权 | Copyright (c) 2000-2024 The Legion of the Bouncy Castle Inc. (https://www.bouncycastle.org) |
 | 许可证 | Bouncy Castle Licence（MIT 式许可证，全文见 https://www.bouncycastle.org/licence.html） |
+| 构建 | 2024-04-30，由源码编译，非官方构件 |
 
 该 jar 是完整 `bcprov` 的裁剪产物，只保留 AES-CCM 加解密所必需的类
 （`AESEngine`、`CCMBlockCipher`、`CBCBlockCipher`、`SICBlockCipher` 及参数/工具类），
 没有 RSA、ECDH、证书等部分。包名被重定向为 `org.bouncycastle.shaded`，
 以区别于 Android 系统内置的 `org.bouncycastle`，避免类冲突。
 
-本项目未修改其中的算法实现，仅按上述方式重新打包。用途见
-`device/xiaomi/XiaomiAuthService.kt`：小米手环认证完成后，所有命令载荷使用
+用途见 `device/xiaomi/XiaomiAuthService.kt`：小米手环认证完成后，所有命令载荷使用
 AES-128-CCM（32 bit tag）加密。
+
+**相对上游的全部改动**（未触碰算法逻辑）：
+
+| 文件 | 改动 |
+|---|---|
+| 全部 32 个 | 包名 `org.bouncycastle.*` → `org.bouncycastle.shaded.*` |
+| `AESEngine` | 注释掉 2 处 `CryptoServicesRegistrar.checkConstraints(...)`，删掉对应 2 个 import。该调用牵连 `CryptoServicesRegistrar`、`DefaultServiceProperties`、`Utils` 一整条依赖链，与加解密结果无关 |
+| `Pack` | 只保留实际用到的 4 个方法（上游 46 个） |
+| `Strings` | 只保留 3 个方法，且这份代码取自**反编译产物**（文件内仍保留 `/* loaded from: classes.dex */` 注释） |
+| `SkippingCipher`、`AEADCipher` | 仅 javadoc 中的全限定名被简写，逻辑未变 |
+| `Arrays`、`CBCBlockCipherMac` | 仅缩进不同 |
+| 其余 25 个 | 与上游逐字节一致（含 `CCMBlockCipher`、`CBCBlockCipher`、`SICBlockCipher`、`KeyParameter`、`AEADParameters`） |
+
+上游 1.76 的源码包本身即不含逐文件的许可证头注释，jar 内也没有；因此本文件的这一节即承担
+Bouncy Castle Licence 所要求的版权声明作用。
+
+**来源已核实**：原始源码在本仓库历史中，`a3fc306`（2024-04-27）引入，
+`e8d5610`（2024-04-30「将Java代码打包成Jar，缩短编译时间」）删除源码、改为提交编译产物。
+用 `git show e8d5610^:app/src/main/java/org/bouncycastle/...` 可取回全文。
+
+版本号按以下证据判定为 **1.76**：`CCMBlockCipher` 与 1.76、1.77 完全一致，1.78 起加入了
+`inputAdjustment` 分支（`CCM packet too large` 判定位置不同）；`Arrays` 1227 行与 1.76 完全一致，
+1.77 起增至 1243 行。比对对象为 Maven Central 上的 `bcprov-jdk18on-sources`。
+
+如需替换为官方构件，添加 `implementation("org.bouncycastle:bcprov-jdk18on:1.76")`
+并把 import 改回 `org.bouncycastle.crypto.*` 即可，代价是 release 体积增加约 4~6 MB。
 
 ## 主要运行时依赖
 
