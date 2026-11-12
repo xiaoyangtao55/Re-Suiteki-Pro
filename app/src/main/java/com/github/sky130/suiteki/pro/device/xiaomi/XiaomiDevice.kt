@@ -4,6 +4,7 @@ package com.github.sky130.suiteki.pro.device.xiaomi
 
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.github.sky130.suiteki.pro.logic.ble.AbstractSuitekiDevice
+import com.github.sky130.suiteki.pro.logic.ble.BatteryInfo
 import com.github.sky130.suiteki.pro.logic.ble.DeviceStatus
 import com.github.sky130.suiteki.pro.logic.ble.HardwareInfo
 import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager
@@ -17,7 +18,7 @@ abstract class XiaomiDevice(name: String, mac: String, key: String) : AbstractSu
     name, mac, key
 ) {
     override val hardware = MutableStateFlow<HardwareInfo?>(null)
-    override val battery = MutableStateFlow("unknown")
+    override val battery = MutableStateFlow<BatteryInfo?>(null)
     override val status = MutableStateFlow(DeviceStatus.Waiting)
     abstract val isEncrypted: Boolean
     internal val authService = XiaomiAuthService(this)
@@ -72,12 +73,27 @@ abstract class XiaomiDevice(name: String, mac: String, key: String) : AbstractSu
     }
 
     /**
+     * 电量合并。2/1 与 2/78 都会带电量，但字段不一定齐：
+     * 2/78 可能没有 batteryLevel，2/1 可能没有充电状态。
+     * 缺哪项就沿用上一次的值，不要用 0 或 false 把已知信息冲掉。
+     */
+    internal fun applyBattery(level: Int?, charging: Boolean?) {
+        if (level == null && charging == null) return
+        val old = battery.value
+        val lv = level?.takeIf { it in 0..100 } ?: old?.level ?: return
+        battery.value = BatteryInfo(level = lv, charging = charging ?: old?.charging)
+    }
+
+    /**
      * 认证完成后一次性把「设备是什么」问清楚：
-     * 设备信息走 2/2，RPK 列表走 20/0，表盘列表走 4/0。
-     * 这三条都只在认证后有效，提前发会被设备静默丢弃。
+     * 设备信息走 2/2，电量走 2/1，基本状态（电量/充电/佩戴）走 2/78，
+     * RPK 列表走 20/0，表盘列表走 4/0。
+     * 这些都只在认证后有效，提前发会被设备静默丢弃。
      */
     open fun onAuth() {
         systemHelper.request()
+        systemHelper.requestBattery()
+        systemHelper.requestBasicState()
         appListHelper.requestRpkList()
         watchfaceHelper.requestList()
     }
@@ -86,6 +102,8 @@ abstract class XiaomiDevice(name: String, mac: String, key: String) : AbstractSu
         installHelper = null
         // 装完刷新一次，否则刚装上的表盘/小应用在列表里看不到
         systemHelper.request()
+        // 安装本身就耗电，装完重新取一次，免得卡片上还是安装前的数字
+        systemHelper.requestBattery()
         watchfaceHelper.requestList()
     }
 

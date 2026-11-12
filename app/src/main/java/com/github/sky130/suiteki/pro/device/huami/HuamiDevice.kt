@@ -3,6 +3,7 @@
 package com.github.sky130.suiteki.pro.device.huami
 
 import com.github.sky130.suiteki.pro.logic.ble.AbstractSuitekiDevice
+import com.github.sky130.suiteki.pro.logic.ble.BatteryInfo
 import com.github.sky130.suiteki.pro.logic.ble.DeviceStatus
 import com.github.sky130.suiteki.pro.logic.ble.HardwareInfo
 import com.github.sky130.suiteki.pro.logic.ble.InstallStatus
@@ -19,7 +20,7 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
     name, mac, key
 ) {
     override val hardware = MutableStateFlow<HardwareInfo?>(null)
-    override val battery = MutableStateFlow("unknown")
+    override val battery = MutableStateFlow<BatteryInfo?>(null)
     override val status = MutableStateFlow(DeviceStatus.Waiting)
     private val authService = HuamiAuthService(this)
     private val appListHelper = HuamiAppListHelper(this)
@@ -92,6 +93,17 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
             model = info.model.ifBlank { old.model },
             serial = info.serial.ifBlank { old.serial },
         )
+    }
+
+    /**
+     * 标准电池服务（0x180F/2A19）读回来的百分比。
+     * 协议里只有一个字节，没有充电状态；读不到就传 null，界面不显示这一行。
+     */
+    fun onBatteryLevel(level: Int?) {
+        if (level == null) return
+        if (level !in 0..100) return
+        val old = battery.value
+        battery.value = BatteryInfo(level = level, charging = old?.charging)
     }
 
     fun onConnectFailed(reason: String) {

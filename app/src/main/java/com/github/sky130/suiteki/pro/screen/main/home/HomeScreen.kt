@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import com.github.sky130.suiteki.pro.MainApplication
 import com.github.sky130.suiteki.pro.MainApplication.Companion.toast
 import com.github.sky130.suiteki.pro.logic.ble.AbstractSuitekiDevice
+import com.github.sky130.suiteki.pro.logic.ble.BatteryInfo
 import com.github.sky130.suiteki.pro.logic.ble.DeviceStatus
 import com.github.sky130.suiteki.pro.logic.ble.InstallStatus
 import com.github.sky130.suiteki.pro.logic.ble.InstallType
@@ -338,6 +339,7 @@ private fun ConnectedCard(
 
     // 认证后（华米是连上即读）由设备回填，没读到就一直是 null
     val hardware by device.hardware.collectAsState()
+    val battery by device.battery.collectAsState()
 
     val statusColor = when (status) {
         DeviceStatus.Connected -> MaterialTheme.colorScheme.primary
@@ -366,6 +368,14 @@ private fun ConnectedCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            battery?.let { b ->
+                Text(
+                    batteryText(b),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (b.isLow && b.charging != true) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             hardware?.let { h ->
                 val detail = listOfNotNull(
                     h.firmware.takeIf { it.isNotBlank() }?.let { "固件 $it" },
@@ -393,6 +403,15 @@ private fun ConnectedCard(
                 )
             }
         }
+    }
+}
+
+/** 电量一行。充电时不提示低电量——插着线刷表盘没有断电风险 */
+private fun batteryText(b: BatteryInfo): String = buildString {
+    append("电量 ${b.level}%")
+    when {
+        b.charging == true -> append("    充电中")
+        b.isLow -> append("    建议充电后再安装")
     }
 }
 

@@ -84,6 +84,10 @@ class HuamiBleSupport(private val device: HuamiDevice) : BleGattCallback() {
             // 4. 设备信息服务（0x180A）是标准 GATT，不需要认证，连上就能读。
             //    读不到就跳过——部分机型只提供其中一两个特征，不能让这条路卡住连接流程。
             readHardwareInfo()
+
+            // 5. 电量走标准电池服务 0x180F/2A19，同样不需要认证。
+            //    部分机型不提供这个特征，读不到就不显示，不影响其它流程。
+            readBattery()
         }
     }
 
@@ -106,6 +110,31 @@ class HuamiBleSupport(private val device: HuamiDevice) : BleGattCallback() {
             return
         }
         device.onHardwareInfo(firmware, model, serial)
+    }
+
+    /**
+     * 电量：0x180F / 2A19，一个字节的百分比。
+     * 读失败或值越界都当作「设备不提供」，把 null 交给设备层忽略。
+     */
+    private suspend fun readBattery() {
+        if (!::bleDevice.isInitialized) return
+        val deferred = CompletableDeferred<ByteArray?>()
+        manager.read(
+            bleDevice,
+            HuamiService.UUID_SERVICE_DEVICE_BATTERY,
+            HuamiService.UUID_CHARACTERISTIC_BATTERY_LEVEL,
+            object : BleReadCallback() {
+                override fun onReadSuccess(data: ByteArray) {
+                    completeOnce(deferred, data)
+                }
+
+                override fun onReadFailure(exception: BleException?) {
+                    Log.d("TAG", "battery read failed: ${exception?.description}")
+                    completeOnce(deferred, null)
+                }
+            })
+        val data = withTimeoutOrNull(3000) { deferred.await() }
+        device.onBatteryLevel(parseBatteryLevel(data))
     }
 
     private suspend fun readText(service: String, characteristic: String): String? {
@@ -170,6 +199,18 @@ class HuamiBleSupport(private val device: HuamiDevice) : BleGattCallback() {
         scope.cancel()
         if (::bleDevice.isInitialized) {
             manager.disconnect(bleDevice)
+        }
+    }
+
+    companion object {
+        /**
+         * 2A19 的首字节是百分比。有的机型后面还会带一个充电状态字节，
+         * 本项目用不到，忽略即可。越界值一律当没读到。
+         */
+        fun parseBatteryLevel(data: ByteArray?): Int? {
+            if (data == null || data.isEmpty()) return null
+            val level = data[0].toInt() and 0xFF
+            return level.takeIf { it in 0..100 }
         }
     }
 }

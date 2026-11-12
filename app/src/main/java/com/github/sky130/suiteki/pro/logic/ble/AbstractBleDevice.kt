@@ -15,7 +15,8 @@ abstract class AbstractSuitekiDevice(
      */
     abstract val hardware: StateFlow<HardwareInfo?>
 
-    abstract val battery: StateFlow<String>
+    /** 电量。null 表示还没读到（没连上，或设备不回这条） */
+    abstract val battery: StateFlow<BatteryInfo?>
     abstract val status: StateFlow<DeviceStatus>
     abstract val appList: SnapshotStateList<AppInfo>
     abstract fun onStart()
@@ -56,6 +57,18 @@ data class HardwareInfo(
     val serial: String = "",
 ) {
     val isEmpty: Boolean get() = firmware.isBlank() && model.isBlank() && serial.isBlank()
+}
+
+/**
+ * 电量。[charging] 为 null 表示设备这次没说充电状态（比如只回了百分比），
+ * 不要当成「未充电」覆盖掉之前读到的值。
+ */
+data class BatteryInfo(
+    val level: Int,
+    val charging: Boolean? = null,
+) {
+    /** 20% 以下视为偏低：刷表盘/固件有中途断电的风险 */
+    val isLow: Boolean get() = level <= 20
 }
 
 /**
