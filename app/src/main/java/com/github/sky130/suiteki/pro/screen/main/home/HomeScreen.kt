@@ -336,6 +336,9 @@ private fun ConnectedCard(
         .firstOrNull { it.mac.equals(device.mac, ignoreCase = true) }
         ?.let { SuitekiManager.driver(it.driverId)?.displayName }
 
+    // 认证后（华米是连上即读）由设备回填，没读到就一直是 null
+    val hardware by device.hardware.collectAsState()
+
     val statusColor = when (status) {
         DeviceStatus.Connected -> MaterialTheme.colorScheme.primary
         DeviceStatus.AuthFailure -> MaterialTheme.colorScheme.error
@@ -363,6 +366,19 @@ private fun ConnectedCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            hardware?.let { h ->
+                val detail = listOfNotNull(
+                    h.firmware.takeIf { it.isNotBlank() }?.let { "固件 $it" },
+                    h.serial.takeIf { it.isNotBlank() }?.let { "SN $it" },
+                ).joinToString("    ")
+                if (detail.isNotEmpty()) {
+                    Text(
+                        detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier

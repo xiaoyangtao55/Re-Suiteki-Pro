@@ -4,6 +4,7 @@ package com.github.sky130.suiteki.pro.device.huami
 
 import com.github.sky130.suiteki.pro.logic.ble.AbstractSuitekiDevice
 import com.github.sky130.suiteki.pro.logic.ble.DeviceStatus
+import com.github.sky130.suiteki.pro.logic.ble.HardwareInfo
 import com.github.sky130.suiteki.pro.logic.ble.InstallStatus
 import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager
 import com.github.sky130.suiteki.pro.util.AppNameStore
@@ -17,7 +18,7 @@ import kotlinx.coroutines.launch
 open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuitekiDevice(
     name, mac, key
 ) {
-    override val version = MutableStateFlow("unknown")
+    override val hardware = MutableStateFlow<HardwareInfo?>(null)
     override val battery = MutableStateFlow("unknown")
     override val status = MutableStateFlow(DeviceStatus.Waiting)
     private val authService = HuamiAuthService(this)
@@ -73,6 +74,26 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
         status.value = DeviceStatus.Connected
     }
 
+    /**
+     * BLE 设备信息服务（0x180A）读回来的结果。
+     * 有的机型只提供其中一两个特征，缺失的字段留空，不能当成读取失败。
+     */
+    fun onHardwareInfo(firmware: String?, model: String?, serial: String?) {
+        val info = HardwareInfo(
+            // 固件串有的带前缀 V（GB 也是这么剥的）
+            firmware = firmware?.trim()?.removePrefix("V").orEmpty(),
+            model = model?.trim().orEmpty(),
+            serial = serial?.trim().orEmpty(),
+        )
+        if (info.isEmpty) return
+        val old = hardware.value ?: HardwareInfo()
+        hardware.value = HardwareInfo(
+            firmware = info.firmware.ifBlank { old.firmware },
+            model = info.model.ifBlank { old.model },
+            serial = info.serial.ifBlank { old.serial },
+        )
+    }
+
     fun onConnectFailed(reason: String) {
         status.value = DeviceStatus.Disconnect
         SuitekiManager.installStatus.value = InstallStatus.InstallFailure(0, reason)
@@ -107,6 +128,8 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
         authCallback = null
         installHelper?.cancel()
         installHelper = null
+        // 断线后固件版本可能随固件升级而变化，留着旧值会误导
+        hardware.value = null
         if (wasInstalling) {
             SuitekiManager.installStatus.value =
                 InstallStatus.InstallFailure(0, "连接已断开，请重连后重试")
