@@ -32,8 +32,11 @@ abstract class AbstractSuitekiDevice(
     /**
      * 带包类型的安装。只有华米系设备用得到（D2 头里的 type 字节），
      * 其它设备忽略 type，行为与 [install] 一致。
+     *
+     * [fileName] 是用户选中的文件名（含扩展名），华米侧用来给表盘兜底命名：
+     * `.bin` 包内没有 app.json，装完只能靠「列表里多出来的 id + 文件名」记录。
      */
-    open fun install(bytes: ByteArray, type: Byte) = install(bytes)
+    open fun install(bytes: ByteArray, type: Byte, fileName: String = "") = install(bytes)
     open fun deleteApp(id: String){}
     open fun launchApp(id:String){}
     open fun requestAppList(){}

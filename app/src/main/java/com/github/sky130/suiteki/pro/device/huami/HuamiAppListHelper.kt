@@ -44,6 +44,8 @@ class HuamiAppListHelper(val device: HuamiDevice) {
             skipped.forEach { SuitekiManager.log("app-list-skip", it) }
         }
         SuitekiManager.log("app-list", "count=${apps.size}")
+        // 安装刚结束时，设备层用这份 id 列表和安装前的快照做差集
+        device.onAppListParsed(apps.map { it.id })
     }
 
     companion object {

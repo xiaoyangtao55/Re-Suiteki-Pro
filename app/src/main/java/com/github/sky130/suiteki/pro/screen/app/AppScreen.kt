@@ -46,6 +46,7 @@ import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager
 import com.github.sky130.suiteki.pro.logic.ble.WatchfaceInfo
 import com.github.sky130.suiteki.pro.screen.main.home.DisconnectScreen
 import com.github.sky130.suiteki.pro.util.AppNameStore
+import com.github.sky130.suiteki.pro.util.InstallRecordStore
 import com.ramcosta.composedestinations.annotation.Destination
 import com.ramcosta.composedestinations.annotation.RootGraph
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
@@ -168,9 +169,23 @@ fun AppScreen(navigator: DestinationsNavigator) {
 
 @Composable
 private fun AppList(device: AbstractSuitekiDevice, onRename: (AppInfo) -> Unit) {
+    if (device.appList.isEmpty()) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("还没拿到应用列表")
+            Text(
+                "列表要等设备返回。点右下角刷新重试；如果一直为空，可能是这台机型不支持列表查询。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         items(device.appList) { app ->
-            val label = AppNameStore.get(app.id)
+            // 手动命名优先；没起过名字就用安装时记下的（表盘是文件名，小程序是 app.json）
+            val record = InstallRecordStore.get(app.id)
+            val label = AppNameStore.get(app.id) ?: record?.name?.takeIf { it.isNotBlank() }
             ElevatedCard(
                 onClick = { onRename(app) },
                 modifier = Modifier.fillMaxWidth(),
@@ -185,6 +200,8 @@ private fun AppList(device: AbstractSuitekiDevice, onRename: (AppInfo) -> Unit) 
                         Spacer(Modifier.height(5.dp))
                         Text(
                             buildString {
+                                // 华米的表盘也混在 0x00A0 列表里，用安装时记下的类型区分
+                                record?.kindLabel?.let { append(it); append("    ") }
                                 append(if (app.name.isBlank()) "版本未知" else "版本 ${app.name}")
                                 if (label != null) {
                                     append("    ")

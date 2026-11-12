@@ -10,9 +10,11 @@ import com.github.sky130.suiteki.pro.logic.ble.InstallStatus
 import com.github.sky130.suiteki.pro.logic.ble.SuitekiManager
 import com.github.sky130.suiteki.pro.util.AppNameStore
 import com.github.sky130.suiteki.pro.util.BytesUtils
+import com.github.sky130.suiteki.pro.util.InstallRecordStore
 import com.github.sky130.suiteki.pro.util.ZabManifest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -27,6 +29,8 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
     private val bleSupport = HuamiBleSupport(this)
     private var installHelper: HuamiInstallHelper? = null
     private var authCallback: (() -> Unit)? = null
+    /** 安装中留下、等 0x00A0 列表回包确认的记录 */
+    private var pendingInstall: PendingInstall? = null
     override val appList get() = appListHelper.list
     val uuids = mapOf(
         HuamiService.UUID_SERVICE_MIBAND_SERVICE to listOf(
@@ -69,10 +73,13 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
      *
      * Band 7 的固件/表盘通道 0x1530/1531/1532 是老的文件传输服务（手环 3 时代就有），
      * 固件不校验 authKey，1.8.x 全程不做 0x0082 握手也能正常装表盘。所以这里不再等认证，
-     * 连上就算 Connected；同时也不主动拉 appList（那条走 0x0082，未认证只会白等超时）。
+     * 连上就算 Connected。
      */
     fun onChannelReady() {
         status.value = DeviceStatus.Connected
+        // 0x00a0 是明文列表，未认证也能读，和 0x0082 那条不是一回事。
+        // 先拉一次存下当前 id 集合：装完再拉，差集就是刚装进去的那个。
+        appListHelper.requestAppItems()
     }
 
     /**
@@ -149,16 +156,24 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
     }
 
     override fun install(bytes: ByteArray) {
-        install(bytes, HuamiService.TYPE_D2_WATCHFACE)
+        install(bytes, HuamiService.TYPE_D2_WATCHFACE, "")
     }
 
-    override fun install(bytes: ByteArray, type: Byte) {
+    override fun install(bytes: ByteArray, type: Byte, fileName: String) {
         if (status.value != DeviceStatus.Connected) {
             SuitekiManager.installStatus.value =
                 InstallStatus.InstallFailure(0, "设备未连接，请稍候重试")
             return
         }
         if (type == HuamiService.TYPE_D2_APP) rememberAppName(bytes)
+        // 记下安装前的 id 快照：装完设备列表会多出这个包，差集就是它
+        pendingInstall = PendingInstall(
+            fileName = fileName.substringBeforeLast('.').trim().ifBlank { "未命名" },
+            type = type,
+            bytes = bytes,
+            beforeIds = appList.map { it.id }.toSet(),
+            startedAt = System.currentTimeMillis(),
+        )
         installHelper?.cancel()
         installHelper = HuamiInstallHelper(this, bytes, type, bleSupport.mtu)
         installHelper?.start()
@@ -189,8 +204,53 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
         return n.isNotEmpty() && n !in setOf("test", "demo", "untitled", "watchface", "app")
     }
 
+    /**
+     * 0x00A0 列表回包。
+     *
+     * 表盘 `.bin` 里没有 appId，装完只能靠「安装前后的列表差集」认出是哪个 id，
+     * 再用文件名当名字。小程序优先用 app.json 里的名字。
+     * 安装前没拿到列表快照（beforeIds 为空）时不猜，避免把名字配到别人头上。
+     */
+    fun onAppListParsed(ids: List<String>) {
+        val pending = pendingInstall ?: return
+        if (!pending.armed) return
+        if (System.currentTimeMillis() - pending.startedAt > PENDING_TIMEOUT_MS) {
+            pendingInstall = null
+            return
+        }
+        val kind = when (pending.type) {
+            HuamiService.TYPE_D2_WATCHFACE -> InstallRecordStore.KIND_WATCHFACE
+            HuamiService.TYPE_D2_APP -> InstallRecordStore.KIND_APP
+            else -> {
+                pendingInstall = null
+                return
+            }
+        }
+        if (pending.beforeIds.isEmpty()) {
+            pendingInstall = null
+            return
+        }
+        val target = addedIds(pending.beforeIds, ids).firstOrNull() ?: return
+        pendingInstall = null
+        CoroutineScope(Dispatchers.IO).launch {
+            val meta = if (pending.type == HuamiService.TYPE_D2_APP) {
+                ZabManifest.parse(pending.bytes)
+            } else {
+                null
+            }
+            val name = meta?.name?.takeIf { isMeaningfulName(it) } ?: pending.fileName
+            InstallRecordStore.put(target, name, kind)
+            // app.json 里的 id 与列表 id 理论上一致；不一致时两边都写，按哪个都能查得到
+            if (meta != null && !meta.id.equals(target, ignoreCase = true)) {
+                InstallRecordStore.put(meta.id, name, kind)
+            }
+            SuitekiManager.log("install-record", "$target=$name kind=$kind")
+        }
+    }
+
     override fun deleteApp(id: String) {
         appListHelper.uninstall(id)
+        InstallRecordStore.remove(id)
     }
 
     override fun requestAppList() {
@@ -204,6 +264,16 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
     fun installFinish() {
         installHelper?.cancel()
         installHelper = null
+        // 装完了才允许回包参与比对：安装中途用户点刷新不能算数
+        pendingInstall?.armed = true
+        appListHelper.requestAppItems()
+        // 设备把新包装进列表可能慢半拍，1.5 秒后补问一次；已经认出来就不用了
+        if (pendingInstall != null) {
+            CoroutineScope(Dispatchers.Main).launch {
+                delay(1500)
+                if (pendingInstall?.armed == true) appListHelper.requestAppItems()
+            }
+        }
     }
 
     fun write(data: ByteArray, service: String, characteristics: String) {
@@ -214,4 +284,32 @@ open class HuamiDevice(name: String, mac: String, key: String) : AbstractSuiteki
     fun write(
         type: Short, data: ByteArray, extendedFlags: Boolean, encrypt: Boolean
     ) = authService.huamiWrite(type, data, extendedFlags, encrypt)
+
+    /**
+     * 一次安装的待确认记录。安装成功前 [armed] 一直是 false，
+     * 避免用户在安装过程中点刷新，把中途的列表回包误当成安装结果。
+     */
+    private class PendingInstall(
+        val fileName: String,
+        val type: Byte,
+        val bytes: ByteArray,
+        val beforeIds: Set<String>,
+        val startedAt: Long,
+    ) {
+        var armed = false
+    }
+
+    companion object {
+        /** 安装失败或设备不回列表时，超过这个时间就放弃这条待确认记录 */
+        private const val PENDING_TIMEOUT_MS = 60_000L
+
+        /**
+         * 安装前后的列表差集。没有安装前快照（空集合）就返回空，宁可留空让用户手动命名，
+         * 也不要把名字随便配给一个已有条目。
+         */
+        fun addedIds(before: Set<String>, now: List<String>): List<String> {
+            if (before.isEmpty()) return emptyList()
+            return now.filter { it !in before }
+        }
+    }
 }
