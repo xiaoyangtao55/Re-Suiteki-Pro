@@ -90,6 +90,9 @@ Band 7 的固件/表盘通道（`0x1530/0x1531/0x1532`）是老的文件传输�
 [AGPL-3.0](LICENSE)。`XiaomiSppPacket.kt`、`XiaomiFWHelper.kt`、`StringUtils.kt`
 等文件衍生自 Gadgetbridge，保留原始版权头。
 
+随包分发的第三方组件（Bouncy Castle、protobuf、FastBle 等）及其许可证见
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
 ## 免责声明
 
 刷表盘/固件有变砖风险，自行评估。作者不对设备损坏负责。
