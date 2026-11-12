@@ -392,6 +392,8 @@ fun DeviceScanDialog(
                     )
                     TextButton(onClick = {
                         runCatching { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+                        // 扫描在这期间已经跑完了，关了让用户开完定位重新点「扫描」
+                        state.dismiss()
                     }) { Text("去打开定位") }
                 }
             }
