@@ -1,5 +1,6 @@
 package com.github.sky130.suiteki.pro.screen.main.device
 
+import android.app.Activity
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -57,6 +58,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +82,8 @@ import com.github.sky130.suiteki.pro.ui.widget.SuitekiDialog
 import com.github.sky130.suiteki.pro.ui.widget.SuitekiTopBar
 import com.github.sky130.suiteki.pro.ui.widget.rememberDialogState
 import com.github.sky130.suiteki.pro.util.MiLogParser
+import com.github.sky130.suiteki.pro.util.Permissions
+import com.github.sky130.suiteki.pro.util.openAppSettings
 import com.ramcosta.composedestinations.annotation.Destination
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -324,6 +328,9 @@ private fun isLocationServiceOn(context: Context): Boolean {
     }.getOrDefault(true)
 }
 
+/** 本进程内是否已为「扫描」要过权限，决定点按钮是弹系统框还是跳设置 */
+private var scanPermissionAsked by mutableStateOf(false)
+
 private val MAC_PATTERN = Regex("([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}")
 
 /**
@@ -335,15 +342,39 @@ fun DeviceScanDialog(
     state: DialogState,
     onPick: (mac: String, bluetoothName: String?) -> Unit,
 ) {
-    if (!state.visible.value) return
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val activity = context as? Activity
     val devices = remember { mutableStateListOf<BleDevice>() }
     var scanning by remember { mutableStateOf(true) }
     // Android 11 及以下：光有定位权限不够，系统定位开关关着照样扫不到
-    val locationMissing = remember { !isLocationServiceOn(context) }
+    var locationMissing by remember { mutableStateOf(!isLocationServiceOn(context)) }
 
-    DisposableEffect(Unit) {
+    var granted by remember { mutableStateOf(Permissions.granted(context, Permissions.scan())) }
+
+    // 必须在 RESUMED 之前注册，所以放在 visible 判断之前
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { granted = Permissions.granted(context, Permissions.scan()) }
+
+    // 每次打开都重新核对：用户可能刚从设置页回来，权限和定位开关都可能变了
+    LaunchedEffect(state.visible.value) {
+        if (!state.visible.value) return@LaunchedEffect
+        devices.clear()
+        scanning = true
+        granted = Permissions.granted(context, Permissions.scan())
+        locationMissing = !isLocationServiceOn(context)
+        if (!granted && !scanPermissionAsked) {
+            // 老系统上定位权限只在这里要，不跟着启动一起弹
+            scanPermissionAsked = true
+            launcher.launch(Permissions.scan())
+        }
+    }
+
+    if (!state.visible.value) return
+
+    DisposableEffect(granted) {
+        if (!granted) return@DisposableEffect onDispose { }
         val manager = BleManager.getInstance()
         manager.initScanRule(BleScanRuleConfig.Builder().setScanTimeOut(15_000).build())
         val callback = object : BleScanCallback() {
@@ -370,16 +401,46 @@ fun DeviceScanDialog(
         onDispose { runCatching { manager.cancelScan() } }
     }
 
+    val needSettings = Permissions.permanentlyDenied(activity, Permissions.scan(), scanPermissionAsked)
+
     SuitekiDialog(
         state = state,
         onDismissRequest = { state.dismiss() },
         button = {
+            if (!granted) {
+                TextButton(onClick = {
+                    if (needSettings) context.openAppSettings()
+                    else launcher.launch(Permissions.scan())
+                }) { Text(if (needSettings) "去应用设置" else "授予权限") }
+            }
             TextButton(onClick = { state.dismiss() }) { Text("关闭") }
         },
         icon = Icons.Filled.Watch,
-        title = if (scanning) "正在扫描…" else "附近的设备",
+        title = when {
+            !granted -> "需要定位权限"
+            scanning -> "正在扫描…"
+            else -> "附近的设备"
+        },
     ) {
-        if (devices.isEmpty()) {
+        if (!granted) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        "扫描附近设备需要「附近的设备」权限。"
+                    } else {
+                        "你当前的系统版本规定：扫描蓝牙设备必须授予定位权限。" +
+                            "本应用只用它发现手环，不读取、不保存任何位置信息。"
+                    }
+                )
+                if (needSettings) {
+                    Text(
+                        "权限已被永久拒绝，需要在系统设置里手动打开。",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                }
+            }
+        } else if (devices.isEmpty()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     if (scanning) "让手环靠近手机并保持屏幕点亮" else "没扫到设备，确认蓝牙已开启后重试"
