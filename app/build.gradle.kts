@@ -15,8 +15,8 @@ android {
         applicationId = "com.re.suiteki.pro"
         minSdk = 21
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.1.4"
+        versionCode = 6
+        versionName = "0.1.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -123,7 +123,6 @@ dependencies {
     ksp(libs.compose.destinations.ksp)
 
 
-    implementation(libs.permission.flow.compose)
 
     // AppCenter 后端 2025-03 已停服，MainApplication 里唯一引用它的是反射一个
     // 根本不存在的类，每次启动都抛 ClassNotFoundException。依赖一起摘掉，省体积。
